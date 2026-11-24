@@ -1,4 +1,4 @@
-const CACHE_NAME = "vario-log-v2";
+const CACHE_NAME = "vario-log-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -16,16 +16,15 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
-  // Skip caching Google Apps Script API calls
   if (url.hostname.includes("script.google.com") || url.hostname.includes("googleusercontent.com")) {
     return;
   }
