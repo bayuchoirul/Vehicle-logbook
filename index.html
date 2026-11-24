@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Vario 110 eSP — Logbook & Komponen</title>
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Vario Log" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <link rel="icon" type="image/png" href="./icon-192.png" />
+  <link rel="manifest" href="./manifest.json" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      -webkit-tap-highlight-color: transparent;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: calc(env(safe-area-inset-bottom) + 5.5rem);
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased selection:bg-emerald-500 selection:text-white">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-20 bg-slate-950/90 backdrop-blur border-b border-slate-800 px-4 py-3">
+    <div class="max-w-md mx-auto flex items-center justify-between">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-slate-500" id="syncDot"></span>
+          <h1 class="text-base font-bold tracking-tight text-white">Honda Vario 110 eSP</h1>
+        </div>
+        <p class="text-xs text-slate-400 mt-0.5">
+          Odometer Terakhir: <span id="latestOdoDisplay" class="font-semibold text-emerald-400">0 km</span>
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="fetchData(true)" id="btnRefresh" title="Sinkronkan Google Sheets" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 active:scale-95 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+        <button onclick="openSettings()" title="Pengaturan API" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 active:scale-95 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-md mx-auto grid grid-cols-2 gap-2 mt-3 bg-slate-900 p-1 rounded-xl border border-slate-800">
+      <button onclick="switchTab('dashboard')" id="tabDashboard" class="py-1.5 text-xs font-semibold rounded-lg bg-slate-800 text-white transition">Dashboard</button>
+      <button onclick="switchTab('history')" id="tabHistory" class="py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition">Riwayat Transaksi</button>
+    </div>
+  </header>
+
+  <main class="max-w-md mx-auto px-4 pt-4">
+    <!-- Banner Setup jika Web App URL belum diisi -->
+    <div id="setupBanner" class="hidden mb-4 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3">
+      <span>Tempel <b>Web App URL</b> Apps Script agar data tersinkron ke Google Sheets.</span>
+      <button onclick="openSettings()" class="shrink-0 px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold active:scale-95 transition">Setup</button>
+    </div>
+
+    <!-- VIEW 1: DASHBOARD -->
+    <section id="viewDashboard" class="space-y-4">
+      <!-- Summary Metrics -->
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5">
+          <p class="text-[11px] text-slate-400 font-medium">Biaya Bulan Ini</p>
+          <p id="monthlyExpense" class="text-lg font-bold text-white mt-1">Rp 0</p>
+          <p id="monthlyBreakdown" class="text-[10px] text-slate-400 mt-1">Servis Rp 0 • BBM Rp 0</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5">
+          <p class="text-[11px] text-slate-400 font-medium">Konsumsi Pertamax</p>
+          <p id="fuelEfficiency" class="text-lg font-bold text-emerald-400 mt-1">— km/L</p>
+          <p id="fuelEfficiencySub" class="text-[10px] text-slate-400 mt-1">Butuh min. 2x full tank</p>
+        </div>
+      </div>
+
+      <!-- Component Wear List -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3.5">
+          <h2 class="text-sm font-bold text-white">Status Komponen Bergerak</h2>
+          <span class="text-[11px] text-slate-400">Jarak & Waktu</span>
+        </div>
+        <div id="componentList" class="space-y-4"></div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: HISTORY -->
+    <section id="viewHistory" class="hidden space-y-3">
+      <!-- Filter Pills & All-time total -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <button onclick="setFilter('ALL')" data-filter="ALL" class="filter-pill px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500 text-slate-950">Semua</button>
+          <button onclick="setFilter('Komponen')" data-filter="Komponen" class="filter-pill px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-300">Komponen</button>
+          <button onclick="setFilter('Jasa')" data-filter="Jasa" class="filter-pill px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-300">Jasa</button>
+          <button onclick="setFilter('Bensin')" data-filter="Bensin" class="filter-pill px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-300">Bensin</button>
+        </div>
+        <span id="filteredTotal" class="text-[11px] font-semibold text-slate-400 shrink-0">Rp 0</span>
+      </div>
+
+      <div id="historyList" class="space-y-2.5"></div>
+    </section>
+  </main>
+
+  <!-- Floating Action Button -->
+  <div class="fixed bottom-0 inset-x-0 z-20 pointer-events-none pb-[calc(env(safe-area-inset-bottom)+1rem)] px-4">
+    <div class="max-w-md mx-auto flex justify-end">
+      <button onclick="openAddModal()" class="pointer-events-auto flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-bold text-sm px-5 py-3.5 rounded-full shadow-lg shadow-emerald-500/25 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        <span>Catat</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: TAMBAH CATATAN -->
+  <div id="addModal" class="hidden fixed inset-0 z-40 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center">
+    <div class="bg-slate-900 border-t sm:border border-slate-800 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-bold text-white">Catat Kejadian Baru</h3>
+        <button onclick="closeAddModal()" class="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white">✕</button>
+      </div>
+
+      <!-- Mode Switcher -->
+      <div class="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800 mb-4">
+        <button type="button" onclick="setFormMode('Servis')" id="modeServisBtn" class="py-2 text-xs font-bold rounded-lg bg-emerald-500 text-slate-950 transition">Komponen / Servis</button>
+        <button type="button" onclick="setFormMode('Bensin')" id="modeBensinBtn" class="py-2 text-xs font-bold rounded-lg text-slate-400 transition">Isi Pertamax</button>
+      </div>
+
+      <form id="logForm" onsubmit="handleSaveLog(event)" class="space-y-3.5">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Tanggal</label>
+            <input type="date" id="inpTanggal" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Odometer (km)</label>
+            <input type="number" inputmode="numeric" id="inpOdometer" required placeholder="42500" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+          </div>
+        </div>
+
+        <!-- Fields Khusus Servis / Komponen -->
+        <div id="servisFields" class="space-y-3.5">
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Jenis Pengeluaran</label>
+            <select id="inpKategoriServis" onchange="toggleCustomItem()" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+              <option value="Komponen">Ganti Komponen Bergerak</option>
+              <option value="Jasa">Jasa Servis / Lainnya</option>
+            </select>
+          </div>
+
+          <div id="komponenSelectWrapper">
+            <label class="block text-[11px] text-slate-400 mb-1">Pilih Komponen</label>
+            <select id="inpKomponen" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"></select>
+          </div>
+
+          <div id="customItemWrapper" class="hidden">
+            <label class="block text-[11px] text-slate-400 mb-1">Nama Servis / Item</label>
+            <input type="text" id="inpCustomItem" placeholder="Contoh: Servis CVT / Cuci Motor" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+          </div>
+        </div>
+
+        <!-- Fields Khusus Bensin -->
+        <div id="bensinFields" class="hidden space-y-3.5">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Total Biaya (Rp)</label>
+              <input type="number" inputmode="numeric" id="inpBiayaBensin" oninput="autoCalcLiter()" placeholder="35000" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Jumlah Liter</label>
+              <input type="number" step="0.01" inputmode="decimal" id="inpLiter" placeholder="2.89" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+            </div>
+          </div>
+
+          <label class="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
+            <div>
+              <span class="text-xs font-semibold text-white block">Isi Penuh (Full Tank)</span>
+              <span class="text-[10px] text-slate-400">Aktifkan untuk menghitung akurasi km/L</span>
+            </div>
+            <input type="checkbox" id="inpFullTank" checked class="w-5 h-5 accent-emerald-500 rounded" />
+          </label>
+        </div>
+
+        <!-- Biaya untuk Servis -->
+        <div id="biayaServisWrapper">
+          <label class="block text-[11px] text-slate-400 mb-1">Total Biaya (Rp)</label>
+          <input type="number" inputmode="numeric" id="inpBiayaServis" placeholder="65000" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+
+        <div>
+          <label class="block text-[11px] text-slate-400 mb-1">Catatan (Opsional)</label>
+          <input type="text" id="inpCatatan" placeholder="Contoh: AHASS Cinere / MPX2 0.8L" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+
+        <!-- Warning Validasi Odometer -->
+        <div id="odoWarningBox" class="hidden p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-200 space-y-2">
+          <p id="odoWarningText"></p>
+          <label class="flex items-center gap-2 font-semibold">
+            <input type="checkbox" id="inpOverrideOdo" class="accent-rose-500" />
+            <span>Tetap simpan (catatan mundur / susulan)</span>
+          </label>
+        </div>
+
+        <button type="submit" id="btnSubmit" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition">
+          Simpan Catatan
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: PENGATURAN API -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center">
+    <div class="bg-slate-900 border-t sm:border border-slate-800 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-bold text-white">Koneksi Google Sheets</h3>
+        <button onclick="closeSettings()" class="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white">✕</button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] text-slate-400 mb-1">Google Apps Script Web App URL</label>
+          <input type="url" id="cfgUrl" placeholder="https://script.google.com/macros/s/.../exec" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+        <div>
+          <label class="block text-[11px] text-slate-400 mb-1">Secret Token</label>
+          <input type="text" id="cfgToken" placeholder="vario110_8f92a4c7e1b04d39" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500" />
+        </div>
+        <div>
+          <label class="block text-[11px] text-slate-400 mb-1">Harga Pertamax / Liter (Rp)</label>
+          <input type="number" inputmode="numeric" id="cfgFuelPrice" placeholder="12100" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500" />
+        </div>
+        <div id="connTestResult" class="hidden text-xs p-2.5 rounded-xl"></div>
+        <div class="grid grid-cols-2 gap-2.5 pt-1">
+          <button type="button" onclick="testConnection()" id="btnTestConn" class="py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition">
+            Tes Koneksi
+          </button>
+          <button type="button" onclick="saveSettings()" class="py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition">
+            Simpan & Sinkron
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_TOKEN = "vario110_8f92a4c7e1b04d39";
+    const DEFAULT_MASTER = [
+      { nama_komponen: "Oli Mesin", interval_km: 2000, interval_bulan: 2 },
+      { nama_komponen: "Oli Gardan", interval_km: 6000, interval_bulan: 6 },
+      { nama_komponen: "V-Belt & Roller", interval_km: 24000, interval_bulan: 24 },
+      { nama_komponen: "Kampas Rem Depan", interval_km: 10000, interval_bulan: 12 },
+      { nama_komponen: "Kampas Rem Belakang", interval_km: 15000, interval_bulan: 18 },
+      { nama_komponen: "Filter Udara", interval_km: 12000, interval_bulan: 12 },
+      { nama_komponen: "Busi", interval_km: 8000, interval_bulan: 8 },
+      { nama_komponen: "Ban Depan", interval_km: 20000, interval_bulan: 24 },
+      { nama_komponen: "Ban Belakang", interval_km: 18000, interval_bulan: 24 }
+    ];
+
+    let state = {
+      logs: JSON.parse(localStorage.getItem("vario_logs") || "[]"),
+      master: JSON.parse(localStorage.getItem("vario_master") || JSON.stringify(DEFAULT_MASTER)),
+      filter: "ALL",
+      formMode: "Servis"
+    };
+
+    const getConfig = () => ({
+      url: localStorage.getItem("vario_gas_url") || "",
+      token: localStorage.getItem("vario_gas_token") || DEFAULT_TOKEN,
+      fuelPrice: Number(localStorage.getItem("vario_fuel_price") || 12100)
+    });
+
+    const formatRp = (num) => "Rp " + Number(num || 0).toLocaleString("id-ID");
+    const formatKm = (num) => Number(num || 0).toLocaleString("id-ID") + " km";
+
+    function init() {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("./sw.js").catch(() => {});
+      }
+      renderAll();
+      const cfg = getConfig();
+      if (!cfg.url) {
+        document.getElementById("setupBanner").classList.remove("hidden");
+      } else {
+        fetchData(false);
+      }
+    }
+
+    async function fetchData(manual = false) {
+      const cfg = getConfig();
+      if (!cfg.url) {
+        if (manual) openSettings();
+        return;
+      }
+
+      const dot = document.getElementById("syncDot");
+      const btn = document.getElementById("btnRefresh");
+      dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-ping";
+      btn.classList.add("opacity-50");
+
+      try {
+        const res = await fetch(`${cfg.url}?token=${encodeURIComponent(cfg.token)}`);
+        const json = await res.json();
+        if (json.status === "success") {
+          state.logs = json.data.logs || [];
+          if (json.data.master && json.data.master.length > 0) {
+            state.master = json.data.master;
+          }
+          localStorage.setItem("vario_logs", JSON.stringify(state.logs));
+          localStorage.setItem("vario_master", JSON.stringify(state.master));
+          document.getElementById("setupBanner").classList.add("hidden");
+          dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+          renderAll();
+        } else {
+          dot.className = "w-2 h-2 rounded-full bg-rose-500";
+          if (manual) alert("Gagal sinkron: " + json.message);
+        }
+      } catch (err) {
+        dot.className = "w-2 h-2 rounded-full bg-rose-500";
+        if (manual) alert("Gagal terhubung ke Apps Script. Periksa URL deployment Anda.");
+      } finally {
+        btn.classList.remove("opacity-50");
+      }
+    }
+
+    function getLatestOdometer() {
+      if (state.logs.length === 0) return 0;
+      return Math.max(...state.logs.map(l => Number(l.odometer) || 0));
+    }
+
+    function calculateFuelEfficiency() {
+      const fuelLogs = state.logs
+        .filter(l => l.kategori === "Bensin" && Number(l.liter) > 0)
+        .sort((a, b) => Number(a.odometer) - Number(b.odometer));
+
+      const fullIndexes = [];
+      fuelLogs.forEach((log, idx) => {
+        if (log.full_tank === true || log.full_tank === "TRUE") fullIndexes.push(idx);
+      });
+
+      if (fullIndexes.length < 2) return null;
+
+      const prevFullIdx = fullIndexes[fullIndexes.length - 2];
+      const lastFullIdx = fullIndexes[fullIndexes.length - 1];
+
+      const distance = Number(fuelLogs[lastFullIdx].odometer) - Number(fuelLogs[prevFullIdx].odometer);
+      if (distance <= 0) return null;
+
+      let totalLiters = 0;
+      for (let i = prevFullIdx + 1; i <= lastFullIdx; i++) {
+        totalLiters += Number(fuelLogs[i].liter);
+      }
+
+      return totalLiters > 0 ? (distance / totalLiters).toFixed(1) : null;
+    }
+
+    function monthsBetween(dateStr) {
+      if (!dateStr) return 0;
+      const start = new Date(dateStr);
+      const now = new Date();
+      const diffDays = (now - start) / (1000 * 60 * 60 * 24);
+      return Math.max(0, diffDays / 30.44);
+    }
+
+    function renderAll() {
+      const latestOdo = getLatestOdometer();
+      document.getElementById("latestOdoDisplay").textContent = formatKm(latestOdo);
+
+      // Monthly Expense (local YYYY-MM)
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const monthLogs = state.logs.filter(l => String(l.tanggal).startsWith(currentMonth));
+      const monthTotal = monthLogs.reduce((sum, l) => sum + (Number(l.biaya) || 0), 0);
+      const fuelTotal = monthLogs.filter(l => l.kategori === "Bensin").reduce((sum, l) => sum + (Number(l.biaya) || 0), 0);
+      const serviceTotal = monthTotal - fuelTotal;
+
+      document.getElementById("monthlyExpense").textContent = formatRp(monthTotal);
+      document.getElementById("monthlyBreakdown").textContent = `Servis ${formatRp(serviceTotal)} • BBM ${formatRp(fuelTotal)}`;
+
+      // Fuel Efficiency
+      const kmPerLiter = calculateFuelEfficiency();
+      document.getElementById("fuelEfficiency").textContent = kmPerLiter ? `${kmPerLiter} km/L` : "— km/L";
+      document.getElementById("fuelEfficiencySub").textContent = kmPerLiter ? "Siklus full tank terakhir" : "Butuh min. 2x full tank";
+
+      // Component Status
+      const compContainer = document.getElementById("componentList");
+      compContainer.innerHTML = state.master.map(comp => {
+        const matchingLogs = state.logs
+          .filter(l => String(l.item).toLowerCase() === String(comp.nama_komponen).toLowerCase())
+          .sort((a, b) => Number(b.odometer) - Number(a.odometer));
+
+        if (matchingLogs.length === 0) {
+          return `
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="font-semibold text-slate-300">${comp.nama_komponen}</span>
+                <span class="text-slate-500 text-[11px]">Belum ada riwayat</span>
+              </div>
+              <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div class="h-full bg-slate-700 w-0"></div>
+              </div>
+            </div>
+          `;
+        }
+
+        const lastLog = matchingLogs[0];
+        const lastReplacedOdo = Number(lastLog.odometer);
+        const usedKm = Math.max(0, latestOdo - lastReplacedOdo);
+        const intervalKm = Number(comp.interval_km) || 1;
+        const pctKm = (usedKm / intervalKm) * 100;
+
+        const usedMonths = monthsBetween(lastLog.tanggal);
+        const intervalMonths = Number(comp.interval_bulan) || 0;
+        const pctMonths = intervalMonths > 0 ? (usedMonths / intervalMonths) * 100 : 0;
+
+        const effectivePct = Math.min(100, Math.round(Math.max(pctKm, pctMonths)));
+        const remainingKm = intervalKm - usedKm;
+
+        let barColor = "bg-emerald-500";
+        let textColor = "text-emerald-400";
+        if (effectivePct >= 95) {
+          barColor = "bg-rose-500";
+          textColor = "text-rose-400";
+        } else if (effectivePct >= 75) {
+          barColor = "bg-amber-400";
+          textColor = "text-amber-400";
+        }
+
+        const kmLabel = remainingKm >= 0
+          ? `Sisa ${remainingKm.toLocaleString("id-ID")} km`
+          : `Lewat ${Math.abs(remainingKm).toLocaleString("id-ID")} km!`;
+
+        const timeSub = intervalMonths > 0
+          ? ` • ${usedMonths.toFixed(1)}/${intervalMonths} bln`
+          : "";
+
+        return `
+          <div>
+            <div class="flex justify-between items-baseline text-xs mb-1 gap-2">
+              <span class="font-semibold text-white truncate">${comp.nama_komponen}</span>
+              <span class="${textColor} font-medium text-[11px] shrink-0">${usedKm.toLocaleString("id-ID")}/${intervalKm.toLocaleString("id-ID")} km (${kmLabel})</span>
+            </div>
+            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div class="h-full ${barColor} rounded-full transition-all duration-500" style="width: ${effectivePct}%"></div>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1">Ganti terakhir: ${lastLog.tanggal} @ ${lastReplacedOdo.toLocaleString("id-ID")} km${timeSub}</p>
+          </div>
+        `;
+      }).join("");
+
+      // Dropdown Komponen di Modal
+      const selectKomp = document.getElementById("inpKomponen");
+      selectKomp.innerHTML = state.master.map(c => `<option value="${c.nama_komponen}">${c.nama_komponen}</option>`).join("");
+
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const list = document.getElementById("historyList");
+      const filtered = state.logs
+        .filter(l => state.filter === "ALL" || l.kategori === state.filter)
+        .sort((a, b) => {
+          if (b.tanggal !== a.tanggal) return String(b.tanggal).localeCompare(String(a.tanggal));
+          return Number(b.odometer) - Number(a.odometer);
+        });
+
+      const totalFiltered = filtered.reduce((sum, l) => sum + (Number(l.biaya) || 0), 0);
+      document.getElementById("filteredTotal").textContent = formatRp(totalFiltered);
+
+      if (filtered.length === 0) {
+        list.innerHTML = `<div class="text-center py-10 text-xs text-slate-500">Belum ada catatan transaksi.</div>`;
+        return;
+      }
+
+      list.innerHTML = filtered.map(log => {
+        const isBensin = log.kategori === "Bensin";
+        const badgeClass = isBensin
+          ? "bg-sky-500/15 text-sky-400 border-sky-500/30"
+          : log.kategori === "Komponen"
+            ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+            : "bg-purple-500/15 text-purple-400 border-purple-500/30";
+
+        const subDetail = isBensin
+          ? `${log.liter} L ${log.full_tank === true || log.full_tank === "TRUE" ? "• Full Tank" : "• Partial"}`
+          : (log.catatan || log.kategori);
+
+        return `
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 text-[10px] font-semibold rounded-md border ${badgeClass}">${log.kategori}</span>
+                <span class="text-[11px] text-slate-400">${log.tanggal}</span>
+              </div>
+              <p class="text-sm font-bold text-white truncate mt-1">${log.item}</p>
+              <p class="text-[11px] text-slate-400 truncate mt-0.5">${formatKm(log.odometer)} • ${subDetail}</p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="text-sm font-bold text-white">${formatRp(log.biaya)}</p>
+              <button onclick="deleteLog('${log.id}')" class="text-[10px] text-slate-500 hover:text-rose-400 mt-1">Hapus</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function switchTab(tab) {
+      const isDash = tab === "dashboard";
+      document.getElementById("viewDashboard").classList.toggle("hidden", !isDash);
+      document.getElementById("viewHistory").classList.toggle("hidden", isDash);
+
+      document.getElementById("tabDashboard").className = isDash
+        ? "py-1.5 text-xs font-semibold rounded-lg bg-slate-800 text-white transition"
+        : "py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition";
+      document.getElementById("tabHistory").className = !isDash
+        ? "py-1.5 text-xs font-semibold rounded-lg bg-slate-800 text-white transition"
+        : "py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition";
+    }
+
+    function setFilter(cat) {
+      state.filter = cat;
+      document.querySelectorAll(".filter-pill").forEach(btn => {
+        const active = btn.dataset.filter === cat;
+        btn.className = active
+          ? "filter-pill px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500 text-slate-950"
+          : "filter-pill px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-300";
+      });
+      renderHistory();
+    }
+
+    function openAddModal() {
+      document.getElementById("logForm").reset();
+      const now = new Date();
+      const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      document.getElementById("inpTanggal").value = localDate;
+      const latest = getLatestOdometer();
+      if (latest > 0) document.getElementById("inpOdometer").placeholder = `Terakhir: ${latest}`;
+      document.getElementById("odoWarningBox").classList.add("hidden");
+      setFormMode("Servis");
+      toggleCustomItem();
+      document.getElementById("addModal").classList.remove("hidden");
+    }
+
+    function closeAddModal() {
+      document.getElementById("addModal").classList.add("hidden");
+    }
+
+    function setFormMode(mode) {
+      state.formMode = mode;
+      const isBensin = mode === "Bensin";
+
+      document.getElementById("modeServisBtn").className = !isBensin
+        ? "py-2 text-xs font-bold rounded-lg bg-emerald-500 text-slate-950 transition"
+        : "py-2 text-xs font-bold rounded-lg text-slate-400 transition";
+      document.getElementById("modeBensinBtn").className = isBensin
+        ? "py-2 text-xs font-bold rounded-lg bg-emerald-500 text-slate-950 transition"
+        : "py-2 text-xs font-bold rounded-lg text-slate-400 transition";
+
+      document.getElementById("servisFields").classList.toggle("hidden", isBensin);
+      document.getElementById("biayaServisWrapper").classList.toggle("hidden", isBensin);
+      document.getElementById("bensinFields").classList.toggle("hidden", !isBensin);
+
+      document.getElementById("inpBiayaServis").required = !isBensin;
+      document.getElementById("inpBiayaBensin").required = isBensin;
+      document.getElementById("inpLiter").required = isBensin;
+    }
+
+    function toggleCustomItem() {
+      const isJasa = document.getElementById("inpKategoriServis").value === "Jasa";
+      document.getElementById("komponenSelectWrapper").classList.toggle("hidden", isJasa);
+      document.getElementById("customItemWrapper").classList.toggle("hidden", !isJasa);
+      document.getElementById("inpCustomItem").required = isJasa && state.formMode === "Servis";
+    }
+
+    function autoCalcLiter() {
+      const rp = Number(document.getElementById("inpBiayaBensin").value);
+      const price = getConfig().fuelPrice;
+      if (rp > 0 && price > 0) {
+        document.getElementById("inpLiter").value = (rp / price).toFixed(2);
+      }
+    }
+
+    async function handleSaveLog(e) {
+      e.preventDefault();
+      const tanggal = document.getElementById("inpTanggal").value;
+      const odometer = Number(document.getElementById("inpOdometer").value);
+      const latestOdo = getLatestOdometer();
+      const override = document.getElementById("inpOverrideOdo").checked;
+
+      if (odometer < latestOdo && !override) {
+        document.getElementById("odoWarningText").textContent =
+          `Odometer (${odometer.toLocaleString("id-ID")} km) lebih kecil dari catatan terakhir (${latestOdo.toLocaleString("id-ID")} km).`;
+        document.getElementById("odoWarningBox").classList.remove("hidden");
+        return;
+      }
+
+      const isBensin = state.formMode === "Bensin";
+      const kategori = isBensin ? "Bensin" : document.getElementById("inpKategoriServis").value;
+      const item = isBensin
+        ? "Pertamax"
+        : kategori === "Komponen"
+          ? document.getElementById("inpKomponen").value
+          : document.getElementById("inpCustomItem").value.trim();
+
+      const newLog = {
+        id: Date.now().toString(),
+        tanggal,
+        odometer,
+        kategori,
+        item,
+        liter: isBensin ? Number(document.getElementById("inpLiter").value) : "",
+        full_tank: isBensin ? document.getElementById("inpFullTank").checked : false,
+        biaya: Number(isBensin ? document.getElementById("inpBiayaBensin").value : document.getElementById("inpBiayaServis").value),
+        catatan: document.getElementById("inpCatatan").value.trim()
+      };
+
+      const btn = document.getElementById("btnSubmit");
+      btn.disabled = true;
+      btn.textContent = "Menyimpan...";
+
+      state.logs.push(newLog);
+      localStorage.setItem("vario_logs", JSON.stringify(state.logs));
+      renderAll();
+
+      const cfg = getConfig();
+      if (cfg.url) {
+        try {
+          const res = await fetch(cfg.url, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "create", token: cfg.token, ...newLog })
+          });
+          const json = await res.json();
+          if (json.status !== "success") throw new Error(json.message);
+        } catch (err) {
+          alert("Tersimpan di memori HP, namun gagal kirim ke Google Sheets: " + err.message);
+        }
+      }
+
+      btn.disabled = false;
+      btn.textContent = "Simpan Catatan";
+      closeAddModal();
+    }
+
+    async function deleteLog(id) {
+      if (!confirm("Hapus catatan ini?")) return;
+      state.logs = state.logs.filter(l => String(l.id) !== String(id));
+      localStorage.setItem("vario_logs", JSON.stringify(state.logs));
+      renderAll();
+
+      const cfg = getConfig();
+      if (cfg.url) {
+        try {
+          await fetch(cfg.url, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "delete", token: cfg.token, id })
+          });
+        } catch (err) {}
+      }
+    }
+
+    function openSettings() {
+      const cfg = getConfig();
+      document.getElementById("cfgUrl").value = cfg.url;
+      document.getElementById("cfgToken").value = cfg.token;
+      document.getElementById("cfgFuelPrice").value = cfg.fuelPrice;
+      document.getElementById("connTestResult").classList.add("hidden");
+      document.getElementById("settingsModal").classList.remove("hidden");
+    }
+
+    function closeSettings() {
+      document.getElementById("settingsModal").classList.add("hidden");
+    }
+
+    async function testConnection() {
+      const url = document.getElementById("cfgUrl").value.trim();
+      const token = document.getElementById("cfgToken").value.trim();
+      const box = document.getElementById("connTestResult");
+      const btn = document.getElementById("btnTestConn");
+
+      if (!url) {
+        box.className = "text-xs p-2.5 rounded-xl bg-rose-500/15 text-rose-300 border border-rose-500/30";
+        box.textContent = "Masukkan Web App URL terlebih dahulu.";
+        box.classList.remove("hidden");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = "Menguji...";
+      box.classList.add("hidden");
+
+      try {
+        const res = await fetch(`${url}?token=${encodeURIComponent(token)}`);
+        const json = await res.json();
+        if (json.status === "success") {
+          const masterCount = (json.data.master || []).length;
+          const logCount = (json.data.logs || []).length;
+          box.className = "text-xs p-2.5 rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/30";
+          box.textContent = `Terhubung! Ditemukan ${masterCount} komponen master & ${logCount} catatan log.`;
+        } else {
+          box.className = "text-xs p-2.5 rounded-xl bg-rose-500/15 text-rose-300 border border-rose-500/30";
+          box.textContent = `Gagal: ${json.message}`;
+        }
+      } catch (err) {
+        box.className = "text-xs p-2.5 rounded-xl bg-rose-500/15 text-rose-300 border border-rose-500/30";
+        box.textContent = "Gagal menjangkau URL. Pastikan akses deployment disetel ke 'Anyone'.";
+      } finally {
+        box.classList.remove("hidden");
+        btn.disabled = false;
+        btn.textContent = "Tes Koneksi";
+      }
+    }
+
+    function saveSettings() {
+      localStorage.setItem("vario_gas_url", document.getElementById("cfgUrl").value.trim());
+      localStorage.setItem("vario_gas_token", document.getElementById("cfgToken").value.trim() || DEFAULT_TOKEN);
+      localStorage.setItem("vario_fuel_price", document.getElementById("cfgFuelPrice").value || 12100);
+      closeSettings();
+      fetchData(true);
+    }
+
+    init();
+  </script>
+</body>
+</html>
