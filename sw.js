@@ -1,4 +1,4 @@
-const CACHE_NAME = "vario-log-v3";
+const CACHE_NAME = "vehicle-log-v1";
 const ASSETS = [
   "./",
   "./index.html",

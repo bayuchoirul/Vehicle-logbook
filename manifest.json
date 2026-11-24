@@ -1,7 +1,7 @@
 {
-  "name": "Vario 110 eSP Logbook",
-  "short_name": "Vario Log",
-  "description": "Pencatat pengeluaran servis, komponen bergerak, dan konsumsi BBM Honda Vario 110 eSP",
+  "name": "Vehicle Logbook & Garasi",
+  "short_name": "Vehicle Log",
+  "description": "Pencatat pengeluaran servis, keausan komponen bergerak, dan konsumsi BBM multi-motor",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#020617",
