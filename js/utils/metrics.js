@@ -266,3 +266,16 @@ export function formatDateID(isoDate) {
     year: "numeric"
   }).format(parsed);
 }
+
+/**
+ * Formats fuel volume consistently with 2 decimal places (e.g., "2,20 L")
+ * across KPIs, Recent Activity, modals, and Logbook tables.
+ * @param {number | null | undefined} liters
+ * @returns {string}
+ */
+export function formatLiters(liters) {
+  if (liters === null || liters === undefined || !Number.isFinite(Number(liters))) {
+    return "0,00 L";
+  }
+  return `${formatNumber(Number(liters), 2)} L`;
+}
