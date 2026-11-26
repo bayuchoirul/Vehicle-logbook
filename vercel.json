@@ -1,11 +1,16 @@
 {
-  "cleanUrls": true,
-  "trailingSlash": false,
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/logs", "destination": "/index.html" },
+    { "source": "/login", "destination": "/login.html" }
+  ],
   "headers": [
     {
-      "source": "/sw.js",
+      "source": "/js/config/env.js",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        { "key": "Cache-Control", "value": "no-store, must-revalidate" }
       ]
     }
   ]
