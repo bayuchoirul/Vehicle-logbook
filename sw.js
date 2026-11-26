@@ -1,9 +1,10 @@
-const CACHE_NAME = "vehicle-logbook-shell-v2";
+const CACHE_NAME = "vehicle-logbook-shell-v3";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
   "/logs.html",
   "/login.html",
+  "/favicon.ico",
   "/css/styles.css"
 ];
 

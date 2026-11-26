@@ -43,6 +43,36 @@ function updateAuthModeUI() {
 }
 
 /**
+ * Translates raw Supabase Auth error messages into clear Indonesian guidance.
+ * @param {unknown} err
+ * @returns {string}
+ */
+function formatAuthErrorMessage(err) {
+  const rawMsg = err instanceof Error ? err.message : String(err || "");
+
+  if (rawMsg.includes("Invalid login credentials")) {
+    return "Email atau kata sandi salah, atau akun belum terdaftar. Jika belum punya akun, klik tab 'Daftar' di atas terlebih dahulu.";
+  }
+  if (rawMsg.includes("Email not confirmed")) {
+    return "Email belum dikonfirmasi. Cek inbox/spam email Anda, atau matikan 'Confirm email' di Supabase → Authentication → Providers → Email.";
+  }
+  if (rawMsg.includes("User already registered")) {
+    return "Email ini sudah terdaftar. Silakan pindah ke tab 'Masuk' untuk login.";
+  }
+  if (rawMsg.includes("Password should be at least")) {
+    return "Kata sandi minimal 6 karakter.";
+  }
+  if (rawMsg.includes("rate limit")) {
+    return "Terlalu banyak percobaan autentikasi. Tunggu beberapa saat lalu coba lagi.";
+  }
+  if (rawMsg.includes("Failed to fetch")) {
+    return "Gagal terhubung ke server Supabase. Periksa koneksi internet dan konfigurasi SUPABASE_URL.";
+  }
+
+  return rawMsg || "Terjadi kesalahan autentikasi.";
+}
+
+/**
  * @param {string} message
  * @param {'error' | 'success'} [kind='error']
  */
@@ -122,7 +152,7 @@ async function initLoginPage() {
         }
       }
     } catch (err) {
-      setAlert(err instanceof Error ? err.message : "Terjadi kesalahan autentikasi.");
+      setAlert(formatAuthErrorMessage(err));
     } finally {
       setButtonLoading(submitBtn, false);
     }
