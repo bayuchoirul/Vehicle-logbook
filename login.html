@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Masuk — Vehicle Logbook</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./css/styles.css" />
+  </head>
+  <body class="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center p-4">
+    <main class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div class="mb-4">
+        <span class="inline-flex rounded-lg bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700">
+          Vehicle Logbook PWA
+        </span>
+        <h1 class="mt-2 text-2xl font-bold text-slate-900">Selamat Datang</h1>
+        <p id="auth-subtitle" class="mt-1 text-sm text-slate-500">
+          Masuk untuk memantau konsumsi BBM &amp; riwayat servis kendaraan.
+        </p>
+      </div>
+
+      <div class="mb-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-sm font-medium">
+        <button
+          id="tab-signin"
+          type="button"
+          class="rounded-lg bg-white py-2 text-slate-900 shadow-xs transition"
+        >
+          Masuk
+        </button>
+        <button
+          id="tab-signup"
+          type="button"
+          class="rounded-lg py-2 text-slate-600 transition"
+        >
+          Daftar
+        </button>
+      </div>
+
+      <div
+        id="auth-alert"
+        class="mb-4 hidden rounded-xl border px-3.5 py-2.5 text-xs font-medium"
+        role="alert"
+      ></div>
+
+      <form id="auth-form" class="space-y-4">
+        <div>
+          <label for="email" class="mb-1 block text-xs font-semibold text-slate-700">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            required
+            autocomplete="email"
+            placeholder="nama@email.com"
+            class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-sky-600"
+          />
+        </div>
+
+        <div>
+          <label for="password" class="mb-1 block text-xs font-semibold text-slate-700">
+            Kata Sandi
+          </label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            required
+            minlength="6"
+            autocomplete="current-password"
+            placeholder="Minimal 6 karakter"
+            class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-sky-600"
+          />
+        </div>
+
+        <button
+          id="auth-submit-btn"
+          type="submit"
+          class="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition"
+        >
+          Masuk ke Logbook
+        </button>
+      </form>
+    </main>
+
+    <script type="module" src="./js/controllers/login-controller.js"></script>
+  </body>
+</html>

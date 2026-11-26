@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Environment & generated secrets
+.env
+.env.local
+.env.*.local
+js/config.js
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+.idea/
+
+# Logs
+npm-debug.log*
