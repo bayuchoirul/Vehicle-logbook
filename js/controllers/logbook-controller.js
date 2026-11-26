@@ -11,6 +11,7 @@ import {
   calculateFuelEfficiencySeries,
   formatDateID,
   formatIDR,
+  formatLiters,
   formatNumber
 } from "../utils/metrics.js";
 import { escapeHtml, qs, showToast } from "../utils/dom.js";
@@ -40,7 +41,7 @@ function getFilteredUnifiedRows() {
     kind: /** @type {const} */ ("fuel"),
     logged_at: f.logged_at,
     odometer_km: Number(f.odometer_km),
-    title: `${f.fuel_brand || "BBM"} (${formatNumber(f.liters, 3)} L @ ${formatIDR(
+    title: `${f.fuel_brand || "BBM"} (${formatLiters(f.liters)} @ ${formatIDR(
       f.price_per_liter
     )})`,
     meta: [

@@ -3,14 +3,22 @@ import assert from "node:assert/strict";
 import {
   calculateFuelEfficiencySeries,
   calculateLitersFromCost,
+  formatLiters,
   summarizeVehicleMetrics
 } from "../js/utils/metrics.js";
 
 test("calculateLitersFromCost computes accurate liters from transaction cost and price per liter", () => {
+  assert.equal(calculateLitersFromCost(22000, 10000), 2.2);
   assert.equal(calculateLitersFromCost(35000, 12100), 2.893);
   assert.equal(calculateLitersFromCost(36300, 12100), 3);
   assert.equal(calculateLitersFromCost(0, 12100), 0);
   assert.equal(calculateLitersFromCost(35000, 0), 0);
+});
+
+test("formatLiters consistently renders 2 decimal places without misleading 3-zero suffixes", () => {
+  assert.equal(formatLiters(2.2), "2,20 L");
+  assert.equal(formatLiters(0), "0,00 L");
+  assert.equal(formatLiters(2.893), "2,89 L");
 });
 
 test("calculateFuelEfficiencySeries computes accurate full-to-full km/L and Rp/km", () => {

@@ -14,6 +14,7 @@ import {
   calculateLitersFromCost,
   formatDateID,
   formatIDR,
+  formatLiters,
   formatNumber,
   summarizeVehicleMetrics
 } from "../utils/metrics.js";
@@ -140,11 +141,11 @@ function updateCalculatedLitersPreview() {
   const liters = calculateLitersFromCost(totalCost, pricePerLiter);
 
   if (liters > 0) {
-    previewEl.textContent = `${formatNumber(liters, 3)} L`;
+    previewEl.textContent = formatLiters(liters);
     previewEl.classList.remove("text-slate-400");
     previewEl.classList.add("text-sky-700");
   } else {
-    previewEl.textContent = "0,000 L";
+    previewEl.textContent = "0,00 L";
     previewEl.classList.add("text-slate-400");
     previewEl.classList.remove("text-sky-700");
   }
@@ -214,10 +215,9 @@ function renderDashboard() {
       metrics.costPerKm !== null ? `${formatIDR(metrics.costPerKm)} / km` : "Rp — / km";
   }
   if (fuelCostEl) {
-    fuelCostEl.textContent = `${formatIDR(metrics.totalFuelCost)} (${formatNumber(
-      metrics.totalFuelLiters,
-      2
-    )} L)`;
+    fuelCostEl.textContent = `${formatIDR(metrics.totalFuelCost)} (${formatLiters(
+      metrics.totalFuelLiters
+    )})`;
   }
   if (maintCostEl) maintCostEl.textContent = formatIDR(metrics.totalMaintenanceCost);
 
@@ -308,7 +308,7 @@ function renderRecentLogs() {
       type: /** @type {const} */ ("fuel"),
       logged_at: f.logged_at,
       odometer_km: Number(f.odometer_km),
-      title: `${f.fuel_brand || "BBM"} • ${formatNumber(f.liters, 3)} L`,
+      title: `${f.fuel_brand || "BBM"} • ${formatLiters(f.liters)}`,
       subtitle: f.station_name || (f.is_full_tank ? "Full Tank" : "Isi Sebagian"),
       cost: Number(f.total_cost)
     })),
@@ -411,7 +411,6 @@ function bindDashboardEvents() {
     await loadActiveVehicleData();
   });
 
-  // Open Vehicle Modal
   const openVehicleHandlers = ["#btn-open-vehicle-modal", "#btn-empty-add-vehicle"];
   for (const selector of openVehicleHandlers) {
     qs(selector)?.addEventListener("click", () => {
@@ -423,7 +422,6 @@ function bindDashboardEvents() {
     });
   }
 
-  // Open Fuel Modal with vehicle's default fuel option & active price
   qs("#btn-open-fuel-modal")?.addEventListener("click", () => {
     const vehicle = getActiveVehicle();
     if (!vehicle) {
@@ -446,7 +444,6 @@ function bindDashboardEvents() {
     openModal("modal-add-fuel");
   });
 
-  // Open Maintenance Modal
   qs("#btn-open-maint-modal")?.addEventListener("click", () => {
     const vehicle = getActiveVehicle();
     if (!vehicle) {
@@ -461,7 +458,6 @@ function bindDashboardEvents() {
     openModal("modal-add-maint");
   });
 
-  // Submit Add Vehicle
   qs("#form-add-vehicle")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     setModalError("modal-add-vehicle", "");
@@ -500,7 +496,6 @@ function bindDashboardEvents() {
     }
   });
 
-  // Submit Add Fuel Log (Transaction Cost -> Auto Liters)
   qs("#form-add-fuel")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     setModalError("modal-add-fuel", "");
@@ -538,10 +533,7 @@ function bindDashboardEvents() {
       form.reset();
       updateCalculatedLitersPreview();
       closeModal("modal-add-fuel");
-      showToast(
-        `Catatan BBM tersimpan (${formatNumber(calculatedLiters, 3)} L).`,
-        "success"
-      );
+      showToast(`Catatan BBM tersimpan (${formatLiters(calculatedLiters)}).`, "success");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Gagal menyimpan BBM.";
       setModalError("modal-add-fuel", msg);
@@ -551,7 +543,6 @@ function bindDashboardEvents() {
     }
   });
 
-  // Submit Add Maintenance Log
   qs("#form-add-maint")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     setModalError("modal-add-maint", "");
