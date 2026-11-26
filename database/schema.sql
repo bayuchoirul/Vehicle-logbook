@@ -1,5 +1,5 @@
 -- ============================================================================
--- Vehicle Logbook — Supabase PostgreSQL Schema & Row Level Security (RLS)
+-- Vehicle Logbook — Supabase PostgreSQL Schema, Migration & RLS
 -- ============================================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -19,6 +19,18 @@ CREATE TABLE IF NOT EXISTS public.vehicles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Idempotent column upgrades if an older `vehicles` table already existed
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS plate_number TEXT DEFAULT '';
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS brand_model TEXT DEFAULT '';
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS fuel_type TEXT DEFAULT 'Pertamax';
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS tank_capacity_liters NUMERIC(6, 2) DEFAULT 3.70;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS initial_odometer_km NUMERIC(10, 1) DEFAULT 0;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS current_odometer_km NUMERIC(10, 1) DEFAULT 0;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS idx_vehicles_user_id ON public.vehicles(user_id);
 
 -- 2. Fuel Logs Table
@@ -37,6 +49,19 @@ CREATE TABLE IF NOT EXISTS public.fuel_logs (
   notes TEXT DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS vehicle_id UUID REFERENCES public.vehicles(id) ON DELETE CASCADE;
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS logged_at DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS odometer_km NUMERIC(10, 1) DEFAULT 0;
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS liters NUMERIC(7, 3) DEFAULT 0;
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS price_per_liter NUMERIC(10, 2) DEFAULT 0;
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS total_cost NUMERIC(12, 2) DEFAULT 0;
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS fuel_brand TEXT DEFAULT 'Pertamax';
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS station_name TEXT DEFAULT '';
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS is_full_tank BOOLEAN DEFAULT true;
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
+ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS idx_fuel_logs_vehicle_date ON public.fuel_logs(vehicle_id, logged_at DESC, odometer_km DESC);
 CREATE INDEX IF NOT EXISTS idx_fuel_logs_user_id ON public.fuel_logs(user_id);
@@ -59,10 +84,47 @@ CREATE TABLE IF NOT EXISTS public.maintenance_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS vehicle_id UUID REFERENCES public.vehicles(id) ON DELETE CASCADE;
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS logged_at DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS odometer_km NUMERIC(10, 1) DEFAULT 0;
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'other';
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS workshop_name TEXT DEFAULT '';
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS total_cost NUMERIC(12, 2) DEFAULT 0;
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS next_due_km NUMERIC(10, 1);
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
+ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS idx_maintenance_logs_vehicle_date ON public.maintenance_logs(vehicle_id, logged_at DESC, odometer_km DESC);
 CREATE INDEX IF NOT EXISTS idx_maintenance_logs_user_id ON public.maintenance_logs(user_id);
 
--- 4. Triggers: Auto-update updated_at & sync highest odometer reading to vehicles
+-- 4. Relax NOT NULL constraints on any legacy columns from older schema versions
+DO $$
+DECLARE
+  rec RECORD;
+BEGIN
+  FOR rec IN
+    SELECT table_name, column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name IN ('vehicles', 'fuel_logs', 'maintenance_logs')
+      AND is_nullable = 'NO'
+      AND column_name NOT IN (
+        'id', 'user_id', 'vehicle_id', 'name', 'logged_at',
+        'odometer_km', 'liters', 'price_per_liter', 'total_cost', 'title'
+      )
+  LOOP
+    EXECUTE format(
+      'ALTER TABLE public.%I ALTER COLUMN %I DROP NOT NULL',
+      rec.table_name,
+      rec.column_name
+    );
+  END LOOP;
+END;
+$$;
+
+-- 5. Triggers: Auto-update updated_at & sync highest odometer reading to vehicles
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -86,7 +148,7 @@ SECURITY DEFINER
 AS $$
 BEGIN
   UPDATE public.vehicles
-  SET current_odometer_km = GREATEST(current_odometer_km, NEW.odometer_km),
+  SET current_odometer_km = GREATEST(COALESCE(current_odometer_km, 0), NEW.odometer_km),
       updated_at = now()
   WHERE id = NEW.vehicle_id;
   RETURN NEW;
@@ -105,7 +167,7 @@ AFTER INSERT OR UPDATE OF odometer_km ON public.maintenance_logs
 FOR EACH ROW
 EXECUTE FUNCTION public.sync_vehicle_odometer();
 
--- 5. Enable Row Level Security (RLS)
+-- 6. Enable Row Level Security (RLS)
 ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fuel_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.maintenance_logs ENABLE ROW LEVEL SECURITY;
@@ -160,3 +222,6 @@ CREATE POLICY "maintenance_logs_update_own" ON public.maintenance_logs
 DROP POLICY IF EXISTS "maintenance_logs_delete_own" ON public.maintenance_logs;
 CREATE POLICY "maintenance_logs_delete_own" ON public.maintenance_logs
   FOR DELETE USING (auth.uid() = user_id);
+
+-- 7. Reload PostgREST schema cache immediately
+NOTIFY pgrst, 'reload schema';

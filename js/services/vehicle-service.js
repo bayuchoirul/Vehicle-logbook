@@ -1,6 +1,34 @@
 import { getSupabaseClient } from "./supabase-client.js";
 
 /**
+ * Parses numeric input safely, supporting both dot and comma decimal separators.
+ * @param {unknown} raw
+ * @param {number} [fallback=NaN]
+ * @returns {number}
+ */
+function parseNumericInput(raw, fallback = Number.NaN) {
+  if (raw === null || raw === undefined || raw === "") return fallback;
+  if (typeof raw === "number") return raw;
+  const normalized = String(raw).trim().replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * Formats PostgREST / Supabase database errors with diagnostic details.
+ * @param {string} prefix
+ * @param {{ message?: string, details?: string | null, hint?: string | null, code?: string }} error
+ * @returns {string}
+ */
+function formatSupabaseError(prefix, error) {
+  const parts = [error.message || "Unknown database error"];
+  if (error.details) parts.push(error.details);
+  if (error.hint) parts.push(`Hint: ${error.hint}`);
+  if (error.code) parts.push(`[${error.code}]`);
+  return `${prefix}: ${parts.join(" — ")}`;
+}
+
+/**
  * Resolves the currently authenticated user ID.
  * @returns {Promise<string>}
  */
@@ -24,7 +52,7 @@ export async function listVehicles() {
     .select("*")
     .order("created_at", { ascending: true });
 
-  if (error) throw new Error(`Gagal memuat kendaraan: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal memuat kendaraan", error));
   return data || [];
 }
 
@@ -38,9 +66,9 @@ export async function createVehicle(payload) {
   const name = String(payload.name || "").trim();
   if (!name) throw new Error("Nama kendaraan wajib diisi.");
 
-  const initialOdo = Number(payload.initial_odometer_km ?? 0);
-  const currentOdo = Number(payload.current_odometer_km ?? initialOdo);
-  const tankCapacity = Number(payload.tank_capacity_liters ?? 3.7);
+  const initialOdo = parseNumericInput(payload.initial_odometer_km, 0);
+  const currentOdo = parseNumericInput(payload.current_odometer_km, initialOdo);
+  const tankCapacity = parseNumericInput(payload.tank_capacity_liters, 3.7);
 
   if (!Number.isFinite(initialOdo) || initialOdo < 0) {
     throw new Error("Odometer awal harus berupa angka >= 0.");
@@ -65,7 +93,7 @@ export async function createVehicle(payload) {
     .select()
     .single();
 
-  if (error) throw new Error(`Gagal menyimpan kendaraan: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal menyimpan kendaraan", error));
   return data;
 }
 
@@ -84,7 +112,7 @@ export async function updateVehicle(vehicleId, updates) {
     .select()
     .single();
 
-  if (error) throw new Error(`Gagal memperbarui kendaraan: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal memperbarui kendaraan", error));
   return data;
 }
 
@@ -103,7 +131,7 @@ export async function listFuelLogs(vehicleId) {
     .order("logged_at", { ascending: false })
     .order("odometer_km", { ascending: false });
 
-  if (error) throw new Error(`Gagal memuat catatan BBM: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal memuat catatan BBM", error));
   return data || [];
 }
 
@@ -116,13 +144,13 @@ export async function createFuelLog(payload) {
   const userId = await getAuthenticatedUserId();
   if (!payload.vehicle_id) throw new Error("Kendaraan belum dipilih.");
 
-  const odometerKm = Number(payload.odometer_km);
-  const liters = Number(payload.liters);
-  const pricePerLiter = Number(payload.price_per_liter);
-  const totalCost =
-    payload.total_cost !== undefined && payload.total_cost !== null && payload.total_cost !== ""
-      ? Number(payload.total_cost)
-      : Math.round(liters * pricePerLiter);
+  const odometerKm = parseNumericInput(payload.odometer_km);
+  const liters = parseNumericInput(payload.liters);
+  const pricePerLiter = parseNumericInput(payload.price_per_liter);
+  const parsedTotal = parseNumericInput(payload.total_cost);
+  const totalCost = Number.isFinite(parsedTotal)
+    ? parsedTotal
+    : Math.round(liters * pricePerLiter);
 
   if (!Number.isFinite(odometerKm) || odometerKm < 0) {
     throw new Error("Odometer harus valid (>= 0 km).");
@@ -153,7 +181,7 @@ export async function createFuelLog(payload) {
     .select()
     .single();
 
-  if (error) throw new Error(`Gagal menyimpan catatan BBM: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal menyimpan catatan BBM", error));
   return data;
 }
 
@@ -171,7 +199,7 @@ export async function updateFuelLog(id, payload) {
     .select()
     .single();
 
-  if (error) throw new Error(`Gagal memperbarui catatan BBM: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal memperbarui catatan BBM", error));
   return data;
 }
 
@@ -182,7 +210,7 @@ export async function updateFuelLog(id, payload) {
 export async function deleteFuelLog(id) {
   const supabase = getSupabaseClient();
   const { error } = await supabase.from("fuel_logs").delete().eq("id", id);
-  if (error) throw new Error(`Gagal menghapus catatan BBM: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal menghapus catatan BBM", error));
 }
 
 /**
@@ -200,7 +228,7 @@ export async function listMaintenanceLogs(vehicleId) {
     .order("logged_at", { ascending: false })
     .order("odometer_km", { ascending: false });
 
-  if (error) throw new Error(`Gagal memuat catatan servis: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal memuat catatan servis", error));
   return data || [];
 }
 
@@ -216,12 +244,10 @@ export async function createMaintenanceLog(payload) {
   const title = String(payload.title || "").trim();
   if (!title) throw new Error("Judul pekerjaan servis wajib diisi.");
 
-  const odometerKm = Number(payload.odometer_km);
-  const totalCost = Number(payload.total_cost ?? 0);
-  const nextDueKm =
-    payload.next_due_km !== undefined && payload.next_due_km !== null && payload.next_due_km !== ""
-      ? Number(payload.next_due_km)
-      : null;
+  const odometerKm = parseNumericInput(payload.odometer_km);
+  const totalCost = parseNumericInput(payload.total_cost, 0);
+  const parsedNextDue = parseNumericInput(payload.next_due_km);
+  const nextDueKm = Number.isFinite(parsedNextDue) ? parsedNextDue : null;
 
   if (!Number.isFinite(odometerKm) || odometerKm < 0) {
     throw new Error("Odometer servis harus valid (>= 0 km).");
@@ -248,7 +274,7 @@ export async function createMaintenanceLog(payload) {
     .select()
     .single();
 
-  if (error) throw new Error(`Gagal menyimpan catatan servis: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal menyimpan catatan servis", error));
   return data;
 }
 
@@ -266,7 +292,7 @@ export async function updateMaintenanceLog(id, payload) {
     .select()
     .single();
 
-  if (error) throw new Error(`Gagal memperbarui catatan servis: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal memperbarui catatan servis", error));
   return data;
 }
 
@@ -277,5 +303,5 @@ export async function updateMaintenanceLog(id, payload) {
 export async function deleteMaintenanceLog(id) {
   const supabase = getSupabaseClient();
   const { error } = await supabase.from("maintenance_logs").delete().eq("id", id);
-  if (error) throw new Error(`Gagal menghapus catatan servis: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError("Gagal menghapus catatan servis", error));
 }

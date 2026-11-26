@@ -21,6 +21,7 @@ import {
   openModal,
   qs,
   setButtonLoading,
+  setModalError,
   showToast
 } from "../utils/dom.js";
 
@@ -284,8 +285,8 @@ function bindFuelAutoCalculation() {
   const totalInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-total"));
 
   const recalcTotal = () => {
-    const liters = Number(litersInput?.value || 0);
-    const price = Number(priceInput?.value || 0);
+    const liters = Number(String(litersInput?.value || "").replace(",", "."));
+    const price = Number(String(priceInput?.value || "").replace(",", "."));
     if (liters > 0 && price > 0 && totalInput) {
       totalInput.value = String(Math.round(liters * price));
     }
@@ -354,6 +355,7 @@ function bindDashboardEvents() {
   // Submit Add Vehicle
   qs("#form-add-vehicle")?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setModalError("modal-add-vehicle", "");
     const form = /** @type {HTMLFormElement} */ (event.target);
     const submitBtn = /** @type {HTMLButtonElement | null} */ (qs("#btn-submit-vehicle"));
     setButtonLoading(submitBtn, true);
@@ -365,8 +367,12 @@ function bindDashboardEvents() {
         plate_number: String(formData.get("plate_number") || ""),
         brand_model: String(formData.get("brand_model") || ""),
         fuel_type: String(formData.get("fuel_type") || "Pertamax"),
-        tank_capacity_liters: Number(formData.get("tank_capacity_liters") || 3.7),
-        initial_odometer_km: Number(formData.get("initial_odometer_km") || 0)
+        tank_capacity_liters: Number(
+          String(formData.get("tank_capacity_liters") || "3.7").replace(",", ".")
+        ),
+        initial_odometer_km: Number(
+          String(formData.get("initial_odometer_km") || "0").replace(",", ".")
+        )
       });
 
       state.vehicles.push(created);
@@ -377,7 +383,9 @@ function bindDashboardEvents() {
       closeModal("modal-add-vehicle");
       showToast(`Kendaraan "${created.name}" berhasil ditambahkan.`, "success");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Gagal menyimpan kendaraan.", "error");
+      const msg = err instanceof Error ? err.message : "Gagal menyimpan kendaraan.";
+      setModalError("modal-add-vehicle", msg);
+      showToast(msg, "error");
     } finally {
       setButtonLoading(submitBtn, false);
     }
@@ -386,6 +394,7 @@ function bindDashboardEvents() {
   // Submit Add Fuel Log
   qs("#form-add-fuel")?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setModalError("modal-add-fuel", "");
     const vehicle = getActiveVehicle();
     if (!vehicle) return;
 
@@ -398,10 +407,12 @@ function bindDashboardEvents() {
       await createFuelLog({
         vehicle_id: vehicle.id,
         logged_at: String(formData.get("logged_at") || ""),
-        odometer_km: Number(formData.get("odometer_km")),
-        liters: Number(formData.get("liters")),
-        price_per_liter: Number(formData.get("price_per_liter")),
-        total_cost: formData.get("total_cost") ? Number(formData.get("total_cost")) : undefined,
+        odometer_km: Number(String(formData.get("odometer_km") || "").replace(",", ".")),
+        liters: Number(String(formData.get("liters") || "").replace(",", ".")),
+        price_per_liter: Number(String(formData.get("price_per_liter") || "").replace(",", ".")),
+        total_cost: formData.get("total_cost")
+          ? Number(String(formData.get("total_cost")).replace(",", "."))
+          : undefined,
         fuel_brand: String(formData.get("fuel_brand") || "Pertamax"),
         station_name: String(formData.get("station_name") || ""),
         is_full_tank: formData.get("is_full_tank") === "on",
@@ -415,7 +426,9 @@ function bindDashboardEvents() {
       closeModal("modal-add-fuel");
       showToast("Catatan pengisian BBM berhasil disimpan.", "success");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Gagal menyimpan BBM.", "error");
+      const msg = err instanceof Error ? err.message : "Gagal menyimpan BBM.";
+      setModalError("modal-add-fuel", msg);
+      showToast(msg, "error");
     } finally {
       setButtonLoading(submitBtn, false);
     }
@@ -424,6 +437,7 @@ function bindDashboardEvents() {
   // Submit Add Maintenance Log
   qs("#form-add-maint")?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setModalError("modal-add-maint", "");
     const vehicle = getActiveVehicle();
     if (!vehicle) return;
 
@@ -436,14 +450,16 @@ function bindDashboardEvents() {
       await createMaintenanceLog({
         vehicle_id: vehicle.id,
         logged_at: String(formData.get("logged_at") || ""),
-        odometer_km: Number(formData.get("odometer_km")),
+        odometer_km: Number(String(formData.get("odometer_km") || "").replace(",", ".")),
         category: /** @type {import("../types.js").MaintenanceLog["category"]} */ (
           String(formData.get("category") || "other")
         ),
         title: String(formData.get("title") || ""),
         workshop_name: String(formData.get("workshop_name") || ""),
-        total_cost: Number(formData.get("total_cost") || 0),
-        next_due_km: formData.get("next_due_km") ? Number(formData.get("next_due_km")) : null,
+        total_cost: Number(String(formData.get("total_cost") || "0").replace(",", ".")),
+        next_due_km: formData.get("next_due_km")
+          ? Number(String(formData.get("next_due_km")).replace(",", "."))
+          : null,
         notes: String(formData.get("notes") || "")
       });
 
@@ -454,7 +470,9 @@ function bindDashboardEvents() {
       closeModal("modal-add-maint");
       showToast("Catatan servis berhasil disimpan.", "success");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Gagal menyimpan servis.", "error");
+      const msg = err instanceof Error ? err.message : "Gagal menyimpan servis.";
+      setModalError("modal-add-maint", msg);
+      showToast(msg, "error");
     } finally {
       setButtonLoading(submitBtn, false);
     }

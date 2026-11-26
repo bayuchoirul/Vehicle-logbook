@@ -54,10 +54,11 @@ export function showToast(message, type = "info") {
   toast.textContent = message;
   container.appendChild(toast);
 
+  const duration = type === "error" ? 6500 : 3400;
   window.setTimeout(() => {
     toast.classList.add("opacity-0", "translate-y-1");
     window.setTimeout(() => toast.remove(), 220);
-  }, 3400);
+  }, duration);
 }
 
 /**
@@ -91,6 +92,10 @@ export function setButtonLoading(button, isLoading, loadingText = "Menyimpan..."
 export function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (!modal) return;
+  modal.querySelectorAll("[data-modal-error]").forEach((el) => {
+    el.classList.add("hidden");
+    el.textContent = "";
+  });
   modal.classList.remove("hidden");
   modal.classList.add("flex");
   document.body.classList.add("overflow-hidden");
@@ -106,6 +111,25 @@ export function closeModal(modalId) {
   modal.classList.add("hidden");
   modal.classList.remove("flex");
   document.body.classList.remove("overflow-hidden");
+}
+
+/**
+ * Displays or clears an inline error banner inside a modal.
+ * @param {string} modalId
+ * @param {string} message
+ */
+export function setModalError(modalId, message) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+  const errorBox = modal.querySelector("[data-modal-error]");
+  if (!errorBox) return;
+  if (!message) {
+    errorBox.classList.add("hidden");
+    errorBox.textContent = "";
+    return;
+  }
+  errorBox.classList.remove("hidden");
+  errorBox.textContent = message;
 }
 
 /**
