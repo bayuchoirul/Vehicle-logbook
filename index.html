@@ -1,573 +1,329 @@
 <!DOCTYPE html>
 <html lang="id">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard — Vehicle Logbook</title>
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230f172a'/%3E%3Cpath d='M18 38h28l-4-12H22l-4 12zm4 0v6m20-6v6' stroke='%2338bdf8' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E"
-    />
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="stylesheet" href="./css/styles.css" />
-  </head>
-  <body class="min-h-screen bg-slate-50 text-slate-900">
-    <!-- Top Header -->
-    <header class="sticky top-0 z-30 border-b border-slate-200 bg-white">
-      <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <div class="flex items-center gap-3">
-          <a href="./index.html" class="text-base font-bold text-slate-900">Vehicle Logbook</a>
-          <nav class="flex items-center gap-1 rounded-lg bg-slate-100 p-1 text-xs font-semibold">
-            <a href="./index.html" class="rounded-md bg-white px-2.5 py-1 text-slate-900 shadow-xs">
-              Dashboard
-            </a>
-            <a href="./logs.html" class="rounded-md px-2.5 py-1 text-slate-600 hover:text-slate-900">
-              Riwayat
-            </a>
-          </nav>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <span id="user-email" class="hidden text-xs text-slate-500 sm:inline"></span>
-          <button
-            id="btn-signout"
-            type="button"
-            class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-          >
-            Keluar
-          </button>
-        </div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Vehicle Logbook</title>
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="stylesheet" href="./css/styles.css" />
+  <script type="module" src="./js/config.js"></script>
+  <script type="module" src="./js/controllers/dashboard-controller.js"></script>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-800 antialiased">
+  <!-- Top Navigation -->
+  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
+      <div class="flex items-center gap-6">
+        <a href="./" class="text-base font-bold tracking-tight text-slate-900">Vehicle Logbook</a>
+        <nav class="flex items-center gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold">
+          <a href="./" class="rounded-lg bg-white px-3 py-1.5 text-slate-900 shadow-xs">Dashboard</a>
+          <a href="./logs" class="rounded-lg px-3 py-1.5 text-slate-600 hover:text-slate-900">Riwayat</a>
+        </nav>
       </div>
-    </header>
-
-    <main class="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
-      <!-- Vehicle Bar & Quick Actions -->
-      <section class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-        <div class="flex flex-wrap items-center gap-2">
-          <select
-            id="vehicle-selector"
-            aria-label="Pilih Kendaraan"
-            class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-          ></select>
-          <span
-            id="vehicle-meta-badge"
-            class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600"
-          ></span>
-          <button
-            id="btn-open-vehicle-modal"
-            type="button"
-            class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-          >
-            + Kendaraan
-          </button>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <button
-            id="btn-open-fuel-modal"
-            type="button"
-            class="rounded-xl bg-sky-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-sky-700"
-          >
-            + Catat BBM
-          </button>
-          <button
-            id="btn-open-maint-modal"
-            type="button"
-            class="rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-          >
-            + Catat Servis
-          </button>
-        </div>
-      </section>
-
-      <!-- Empty State Banner -->
-      <section
-        id="empty-vehicle-banner"
-        class="hidden rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center"
-      >
-        <h2 class="text-base font-bold text-amber-900">Belum Ada Kendaraan Terdaftar</h2>
-        <p class="mt-1 text-sm text-amber-800">
-          Tambahkan profil kendaraan pertama Anda (misal: Honda Vario 110 eSP, tangki 3.7 L) untuk mulai mencatat.
-        </p>
+      <div class="flex items-center gap-3">
+        <span id="user-email" class="hidden text-xs text-slate-500 sm:inline"></span>
         <button
-          id="btn-empty-add-vehicle"
+          id="btn-signout"
           type="button"
-          class="mt-4 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+          class="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
         >
-          + Tambah Kendaraan Pertama
+          Keluar
         </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+    <!-- Vehicle Switcher & Primary Actions -->
+    <section class="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs sm:flex-row sm:items-center">
+      <div class="flex flex-wrap items-center gap-3">
+        <select
+          id="vehicle-selector"
+          aria-label="Pilih Kendaraan"
+          class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-900 focus:border-sky-500 focus:outline-hidden"
+        >
+          <option value="">Memuat kendaraan...</option>
+        </select>
+        <span id="vehicle-meta-badge" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+          Memuat...
+        </span>
+        <button
+          id="btn-open-vehicle-modal"
+          type="button"
+          class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          + Kendaraan
+        </button>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2.5">
+        <button
+          id="btn-open-fuel-modal"
+          type="button"
+          class="rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700"
+        >
+          + Catat BBM
+        </button>
+        <button
+          id="btn-open-maint-modal"
+          type="button"
+          class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+        >
+          + Catat Servis
+        </button>
+      </div>
+    </section>
+
+    <!-- Empty Vehicle State -->
+    <section id="empty-vehicle-banner" class="hidden rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+      <h2 class="text-base font-bold text-slate-900">Belum Ada Kendaraan Terdaftar</h2>
+      <p class="mt-1 text-sm text-slate-500">Tambahkan kendaraan pertama Anda untuk mulai mencatat BBM dan servis berkala.</p>
+      <button
+        id="btn-empty-add-vehicle"
+        type="button"
+        class="mt-4 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+      >
+        + Tambah Kendaraan Pertama
+      </button>
+    </section>
+
+    <!-- Dashboard Telemetry Grid -->
+    <div id="dashboard-main" class="space-y-6">
+      <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+          <p class="text-xs font-medium text-slate-500">Odometer Saat Ini</p>
+          <p id="kpi-odometer" class="mt-1.5 text-2xl font-bold text-slate-900">— km</p>
+          <p id="kpi-distance" class="mt-1 text-xs text-slate-500">Jarak tercatat: —</p>
+        </article>
+
+        <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+          <p class="text-xs font-medium text-slate-500">Rata-rata Konsumsi BBM</p>
+          <p id="kpi-avg-kmpl" class="mt-1.5 text-2xl font-bold text-sky-600">— km/L</p>
+          <p id="kpi-last-kmpl" class="mt-1 text-xs text-slate-500">Butuh min. 2x full tank</p>
+        </article>
+
+        <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+          <p class="text-xs font-medium text-slate-500">Total Biaya Operasional</p>
+          <p id="kpi-total-cost" class="mt-1.5 text-2xl font-bold text-slate-900">Rp 0</p>
+          <p id="kpi-cost-per-km" class="mt-1 text-xs text-slate-500">Rp — / km</p>
+        </article>
+
+        <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+          <p class="text-xs font-medium text-slate-500">Rincian BBM vs Servis</p>
+          <p id="kpi-fuel-cost" class="mt-1.5 text-sm font-bold text-slate-900">Rp 0 (0,00 L)</p>
+          <p class="mt-1 text-xs text-slate-500">Servis: <span id="kpi-maint-cost" class="font-semibold text-slate-700">Rp 0</span></p>
+        </article>
       </section>
 
-      <!-- Dashboard Telemetry -->
-      <div id="dashboard-main" class="space-y-6">
-        <!-- KPI Grid -->
-        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-            <p class="text-xs font-medium text-slate-500">Odometer Saat Ini</p>
-            <p id="kpi-odometer" class="mt-1 text-2xl font-bold text-slate-900">— km</p>
-            <p id="kpi-distance" class="mt-1 text-xs text-slate-500">Jarak tercatat: — km</p>
-          </article>
-
-          <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-            <p class="text-xs font-medium text-slate-500">Rata-rata Konsumsi BBM</p>
-            <p id="kpi-avg-kmpl" class="mt-1 text-2xl font-bold text-sky-700">— km/L</p>
-            <p id="kpi-last-kmpl" class="mt-1 text-xs text-slate-500">Isian terakhir: —</p>
-          </article>
-
-          <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-            <p class="text-xs font-medium text-slate-500">Total Biaya Operasional</p>
-            <p id="kpi-total-cost" class="mt-1 text-2xl font-bold text-slate-900">Rp 0</p>
-            <p id="kpi-cost-per-km" class="mt-1 text-xs text-slate-500">Rp — / km</p>
-          </article>
-
-          <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-            <p class="text-xs font-medium text-slate-500">Rincian BBM vs Servis</p>
-            <p id="kpi-fuel-cost" class="mt-1 text-sm font-bold text-slate-900">Rp 0 (0 L)</p>
-            <p class="mt-1 text-xs text-slate-500">
-              Servis: <span id="kpi-maint-cost" class="font-semibold text-slate-700">Rp 0</span>
-            </p>
-          </article>
-        </section>
-
-        <!-- Reminders & Monthly Breakdown -->
-        <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-            <h2 class="text-base font-bold text-slate-900">Pengingat Servis Berkala</h2>
-            <p class="text-xs text-slate-500">Menampilkan komponen dengan sisa jarak &le; 500 km</p>
-            <div id="service-reminders-list" class="mt-4 space-y-3"></div>
-          </article>
-
-          <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-            <div class="flex items-center justify-between">
-              <div>
-                <h2 class="text-base font-bold text-slate-900">Pengeluaran 6 Bulan Terakhir</h2>
-                <p class="text-xs text-slate-500">Biru: BBM • Kuning: Perawatan &amp; Servis</p>
-              </div>
-            </div>
-            <div id="monthly-spend-chart" class="mt-4 space-y-3"></div>
-          </article>
-        </section>
-
-        <!-- Recent Activity -->
-        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-          <div class="flex items-center justify-between">
-            <h2 class="text-base font-bold text-slate-900">Aktivitas Terbaru</h2>
-            <a href="./logs.html" class="text-xs font-semibold text-sky-700 hover:underline">
-              Lihat Semua Riwayat &rarr;
-            </a>
+      <!-- Reminders & Monthly Spend -->
+      <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <h2 class="text-sm font-bold text-slate-900">Pengingat Servis Berkala</h2>
+          <p class="mt-0.5 text-xs text-slate-500">Menampilkan komponen dengan sisa jarak &le; 500 km</p>
+          <div id="service-reminders-list" class="mt-4 space-y-2.5">
+            <p class="text-sm text-slate-500">Memuat jadwal servis...</p>
           </div>
-          <div id="recent-activity-list" class="mt-2 divide-y"></div>
-        </section>
-      </div>
-    </main>
+        </article>
 
-    <!-- MODAL: Add Vehicle -->
-    <div
-      id="modal-add-vehicle"
-      data-modal-backdrop="true"
-      class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 p-4"
-    >
-      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <h2 class="text-sm font-bold text-slate-900">Pengeluaran 6 Bulan Terakhir</h2>
+          <p class="mt-0.5 text-xs text-slate-500">Biru: BBM • Kuning: Perawatan &amp; Servis</p>
+          <div id="monthly-spend-chart" class="mt-4 space-y-3">
+            <p class="text-sm text-slate-500">Memuat grafik pengeluaran...</p>
+          </div>
+        </article>
+      </section>
+
+      <!-- Recent Activity -->
+      <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
         <div class="flex items-center justify-between">
-          <h3 class="text-lg font-bold text-slate-900">Tambah Kendaraan</h3>
-          <button
-            type="button"
-            data-close-modal="modal-add-vehicle"
-            class="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100"
-          >
-            &times;
-          </button>
+          <h2 class="text-sm font-bold text-slate-900">Aktivitas Terbaru</h2>
+          <a href="./logs" class="text-xs font-semibold text-sky-600 hover:underline">Lihat Semua Riwayat &rarr;</a>
+        </div>
+        <div id="recent-activity-list" class="mt-3 divide-y divide-slate-100">
+          <p class="py-4 text-sm text-slate-500">Memuat aktivitas...</p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Modal: Tambah Kendaraan -->
+  <div id="modal-add-vehicle" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900">Tambah Kendaraan</h3>
+        <button type="button" data-close-modal="modal-add-vehicle" class="text-sm text-slate-400 hover:text-slate-700">&times;</button>
+      </div>
+      <p data-modal-error class="mt-3 hidden rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700"></p>
+      <form id="form-add-vehicle" class="mt-4 space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700">Nama Kendaraan *</label>
+          <input name="name" type="text" required placeholder="Honda Vario 110 eSP" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Plat Nomor</label>
+            <input name="plate_number" type="text" placeholder="B 6667 ZNO" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">BBM Utama</label>
+            <select id="vehicle-fuel-type" name="fuel_type" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></select>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Kapasitas Tangki (L)</label>
+            <input name="tank_capacity_liters" type="number" step="0.1" value="3.7" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Odometer Awal (km)</label>
+            <input name="initial_odometer_km" type="number" step="0.1" value="0" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" data-close-modal="modal-add-vehicle" class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600">Batal</button>
+          <button id="btn-submit-vehicle" type="submit" data-loading-text="Menyimpan..." class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Simpan Kendaraan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Catat BBM -->
+  <div id="modal-add-fuel" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900">Catat Pengisian BBM</h3>
+        <button type="button" data-close-modal="modal-add-fuel" class="text-sm text-slate-400 hover:text-slate-700">&times;</button>
+      </div>
+      <p data-modal-error class="mt-3 hidden rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700"></p>
+      <form id="form-add-fuel" class="mt-4 space-y-3.5">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Tanggal *</label>
+            <input id="fuel-date" name="logged_at" type="date" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Odometer (km) *</label>
+            <input id="fuel-odometer" name="odometer_km" type="number" step="0.1" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
         </div>
 
-        <div
-          data-modal-error
-          class="mt-3 hidden rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700"
-          role="alert"
-        ></div>
-
-        <form id="form-add-vehicle" class="mt-4 space-y-3">
-          <div>
-            <label class="mb-1 block text-xs font-semibold text-slate-700">Nama Kendaraan *</label>
-            <input
-              name="name"
-              type="text"
-              required
-              placeholder="Contoh: Honda Vario 110 eSP"
-              class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-slate-700">Nomor Polisi</label>
-              <input
-                name="plate_number"
-                type="text"
-                placeholder="B 1234 XYZ"
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label for="vehicle-fuel-type" class="mb-1 block text-xs font-semibold text-slate-700">
-                BBM Utama
-              </label>
-              <select
-                id="vehicle-fuel-type"
-                name="fuel_type"
-                class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-              ></select>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-slate-700">Kapasitas Tangki (L)</label>
-              <input
-                name="tank_capacity_liters"
-                type="number"
-                step="0.1"
-                min="0.5"
-                value="3.7"
-                required
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-slate-700">Odometer Awal (km)</label>
-              <input
-                name="initial_odometer_km"
-                type="number"
-                step="0.1"
-                min="0"
-                value="0"
-                required
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-
-          <div class="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              data-close-modal="modal-add-vehicle"
-              class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700"
-            >
-              Batal
-            </button>
-            <button
-              id="btn-submit-vehicle"
-              type="submit"
-              class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-            >
-              Simpan Kendaraan
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- MODAL: Add Fuel Log -->
-    <div
-      id="modal-add-fuel"
-      data-modal-backdrop="true"
-      class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 p-4"
-    >
-      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-bold text-slate-900">Catat Pengisian BBM</h3>
-          <button
-            type="button"
-            data-close-modal="modal-add-fuel"
-            class="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100"
-          >
-            &times;
-          </button>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700">Jenis BBM *</label>
+          <select id="fuel-brand" name="fuel_brand" required class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"></select>
         </div>
 
-        <div
-          data-modal-error
-          class="mt-3 hidden rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700"
-          role="alert"
-        ></div>
-
-        <form id="form-add-fuel" class="mt-4 space-y-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label for="fuel-date" class="mb-1 block text-xs font-semibold text-slate-700">
-                Tanggal *
-              </label>
-              <input
-                id="fuel-date"
-                name="logged_at"
-                type="date"
-                required
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label for="fuel-odometer" class="mb-1 block text-xs font-semibold text-slate-700">
-                Odometer (km) *
-              </label>
-              <input
-                id="fuel-odometer"
-                name="odometer_km"
-                type="number"
-                step="0.1"
-                min="0"
-                required
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-
+        <div class="grid grid-cols-2 gap-3">
           <div>
-            <label for="fuel-brand" class="mb-1 block text-xs font-semibold text-slate-700">
-              Jenis BBM *
-            </label>
-            <select
-              id="fuel-brand"
-              name="fuel_brand"
-              required
-              class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-            ></select>
+            <label class="block text-xs font-semibold text-slate-700">Total Bayar (Rp) *</label>
+            <input id="fuel-total" name="total_cost" type="number" step="1" min="1" required placeholder="22000" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
           </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label for="fuel-total" class="mb-1 block text-xs font-semibold text-slate-700">
-                Total Bayar (Rp) *
-              </label>
-              <input
-                id="fuel-total"
-                name="total_cost"
-                type="number"
-                step="1"
-                min="1000"
-                required
-                placeholder="35000"
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold"
-              />
-            </div>
-            <div>
-              <label for="fuel-price" class="mb-1 block text-xs font-semibold text-slate-700">
-                Harga / Liter (Rp) *
-              </label>
-              <input
-                id="fuel-price"
-                name="price_per_liter"
-                type="number"
-                step="1"
-                min="100"
-                required
-                placeholder="12100"
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-
-          <div class="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5">
-            <div>
-              <p class="text-xs font-semibold text-sky-800">Volume Terhitung Otomatis</p>
-              <p class="text-[11px] text-slate-500">Total Bayar &divide; Harga / Liter</p>
-            </div>
-            <p id="fuel-liters-preview" class="text-base font-bold text-slate-400">0,00 L</p>
-          </div>
-
           <div>
-            <label class="mb-1 block text-xs font-semibold text-slate-700">SPBU / Lokasi</label>
-            <input
-              name="station_name"
-              type="text"
-              placeholder="Contoh: SPBU Pertamina Cinere"
-              class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            />
+            <label class="block text-xs font-semibold text-slate-700">Harga / Liter (Rp) *</label>
+            <input id="fuel-price" name="price_per_liter" type="number" step="1" min="1" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
           </div>
-
-          <label class="flex items-center gap-2 text-xs font-medium text-slate-700">
-            <input type="checkbox" name="is_full_tank" checked class="rounded border-slate-300" />
-            Isi penuh (Full Tank — diperlukan untuk akurasi km/L)
-          </label>
-
-          <div>
-            <label class="mb-1 block text-xs font-semibold text-slate-700">Catatan</label>
-            <input
-              name="notes"
-              type="text"
-              placeholder="Opsional"
-              class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
-
-          <div class="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              data-close-modal="modal-add-fuel"
-              class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700"
-            >
-              Batal
-            </button>
-            <button
-              id="btn-submit-fuel"
-              type="submit"
-              class="rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700"
-            >
-              Simpan BBM
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- MODAL: Add Maintenance Log -->
-    <div
-      id="modal-add-maint"
-      data-modal-backdrop="true"
-      class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 p-4"
-    >
-      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-bold text-slate-900">Catat Servis &amp; Perawatan</h3>
-          <button
-            type="button"
-            data-close-modal="modal-add-maint"
-            class="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100"
-          >
-            &times;
-          </button>
         </div>
 
-        <div
-          data-modal-error
-          class="mt-3 hidden rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-700"
-          role="alert"
-        ></div>
-
-        <form id="form-add-maint" class="mt-4 space-y-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-slate-700">Tanggal *</label>
-              <input
-                id="maint-date"
-                name="logged_at"
-                type="date"
-                required
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-slate-700">Odometer (km) *</label>
-              <input
-                id="maint-odometer"
-                name="odometer_km"
-                type="number"
-                step="0.1"
-                min="0"
-                required
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
+        <!-- Quick-Fill Nominal Chips -->
+        <div>
+          <p class="text-[11px] font-medium text-slate-500">Pilih Cepat Nominal:</p>
+          <div class="mt-1.5 flex flex-wrap gap-1.5">
+            <button type="button" data-fuel-preset="20000" class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700">Rp 20.000</button>
+            <button type="button" data-fuel-preset="25000" class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700">Rp 25.000</button>
+            <button type="button" data-fuel-preset="30000" class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700">Rp 30.000</button>
+            <button type="button" data-fuel-preset="35000" class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700">Rp 35.000</button>
+            <button type="button" data-fuel-preset="40000" class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700">Rp 40.000</button>
           </div>
+        </div>
 
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-slate-700">Kategori</label>
-              <select
-                name="category"
-                class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-              >
-                <option value="oil_change">Ganti Oli Mesin / Gardan</option>
-                <option value="cvt_belt">Servis CVT / V-Belt</option>
-                <option value="tires">Ban &amp; Angin</option>
-                <option value="brakes">Rem</option>
-                <option value="battery">Aki &amp; Kelistrikan</option>
-                <option value="tune_up">Tune Up</option>
-                <option value="other">Lainnya</option>
-              </select>
-            </div>
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-slate-700">Biaya (Rp) *</label>
-              <input
-                name="total_cost"
-                type="number"
-                step="1"
-                min="0"
-                required
-                placeholder="65000"
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-
+        <div class="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5">
           <div>
-            <label class="mb-1 block text-xs font-semibold text-slate-700">Judul Pekerjaan *</label>
-            <input
-              name="title"
-              type="text"
-              required
-              placeholder="Contoh: Ganti Oli MPX2 + Oli Gardan"
-              class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            />
+            <p class="text-xs font-semibold text-sky-800">Volume Terhitung Otomatis</p>
+            <p class="text-[11px] text-slate-500">Total Bayar &divide; Harga / Liter</p>
           </div>
+          <p id="fuel-liters-preview" class="text-base font-bold text-slate-400">0,00 L</p>
+        </div>
 
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-slate-700">Bengkel</label>
-              <input
-                name="workshop_name"
-                type="text"
-                placeholder="Sukoharjo Motor / AHASS"
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label class="mb-1 block text-xs font-semibold text-slate-700">Servis Berikutnya (km)</label>
-              <input
-                name="next_due_km"
-                type="number"
-                step="1"
-                min="0"
-                placeholder="Opsional"
-                class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700">Lokasi SPBU</label>
+          <input id="fuel-station" name="station_name" type="text" placeholder="SPBU Pertamina Cinere" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+        </div>
 
-          <div>
-            <label class="mb-1 block text-xs font-semibold text-slate-700">Catatan</label>
-            <input
-              name="notes"
-              type="text"
-              placeholder="Opsional"
-              class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            />
-          </div>
+        <label class="flex items-center gap-2 text-xs font-medium text-slate-700">
+          <input name="is_full_tank" type="checkbox" checked class="h-4 w-4 rounded border-slate-300 text-sky-600" />
+          Pengisian penuh (Full Tank) untuk hitung konsumsi km/L
+        </label>
 
-          <div class="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              data-close-modal="modal-add-maint"
-              class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700"
-            >
-              Batal
-            </button>
-            <button
-              id="btn-submit-maint"
-              type="submit"
-              class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-            >
-              Simpan Servis
-            </button>
-          </div>
-        </form>
-      </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" data-close-modal="modal-add-fuel" class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600">Batal</button>
+          <button id="btn-submit-fuel" type="submit" data-loading-text="Menyimpan..." class="rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white">Simpan BBM</button>
+        </div>
+      </form>
     </div>
+  </div>
 
-    <script type="module" src="./js/controllers/dashboard-controller.js"></script>
-    <script>
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("./sw.js").catch(() => {});
-      }
-    </script>
-  </body>
+  <!-- Modal: Catat Servis -->
+  <div id="modal-add-maint" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900">Catat Perawatan &amp; Servis</h3>
+        <button type="button" data-close-modal="modal-add-maint" class="text-sm text-slate-400 hover:text-slate-700">&times;</button>
+      </div>
+      <p data-modal-error class="mt-3 hidden rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700"></p>
+      <form id="form-add-maint" class="mt-4 space-y-3.5">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Tanggal *</label>
+            <input id="maint-date" name="logged_at" type="date" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Odometer (km) *</label>
+            <input id="maint-odometer" name="odometer_km" type="number" step="0.1" required class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700">Kategori *</label>
+          <select id="maint-category" name="category" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm">
+            <option value="oil_change">Ganti Oli Mesin / Gardan</option>
+            <option value="cvt_belt">Servis CVT / V-Belt / Roller</option>
+            <option value="tires">Ban &amp; Tekanan Angin</option>
+            <option value="brakes">Kampas &amp; Minyak Rem</option>
+            <option value="battery">Aki &amp; Kelistrikan</option>
+            <option value="tune_up">Tune Up &amp; Injeksi</option>
+            <option value="other">Lainnya</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700">Deskripsi Pekerjaan *</label>
+          <input name="title" type="text" required placeholder="Ganti Oli MPX2 + Oli Gardan" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Total Biaya (Rp) *</label>
+            <input name="total_cost" type="number" required placeholder="75000" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Target Servis Berikutnya (km)</label>
+            <input id="maint-next-due" name="next_due_km" type="number" step="1" placeholder="Opsional" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div id="maint-interval-hint" class="hidden items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+          <span id="maint-interval-label" class="text-[11px] font-medium text-amber-800">Saran interval: +2.000 km</span>
+          <button id="btn-apply-maint-interval" type="button" class="rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-amber-700">
+            Terapkan
+          </button>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700">Nama Bengkel</label>
+          <input id="maint-workshop" name="workshop_name" type="text" placeholder="AHASS / Sukoharjo Motor" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" data-close-modal="modal-add-maint" class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600">Batal</button>
+          <button id="btn-submit-maint" type="submit" data-loading-text="Menyimpan..." class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Simpan Servis</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
 </html>

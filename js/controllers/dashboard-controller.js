@@ -31,6 +31,16 @@ import {
 
 const STORAGE_VEHICLE_KEY = "vehicle_logbook_active_vehicle_id";
 
+const DEFAULT_SERVICE_INTERVALS_KM = Object.freeze({
+  oil_change: 2000,
+  cvt_belt: 8000,
+  tires: 15000,
+  brakes: 10000,
+  battery: 20000,
+  tune_up: 4000,
+  other: 0
+});
+
 const state = {
   /** @type {import("../types.js").Vehicle[]} */
   vehicles: [],
@@ -50,6 +60,28 @@ const state = {
  */
 function getActiveVehicle() {
   return state.vehicles.find((v) => v.id === state.activeVehicleId) || state.vehicles[0] || null;
+}
+
+/**
+ * Returns the most recent non-empty station name for the active vehicle.
+ * @returns {string}
+ */
+function getLastUsedStationName() {
+  const recentWithStation = state.fuelLogs.find(
+    (f) => typeof f.station_name === "string" && f.station_name.trim().length > 0
+  );
+  return recentWithStation ? recentWithStation.station_name.trim() : "";
+}
+
+/**
+ * Returns the most recent non-empty workshop name for the active vehicle.
+ * @returns {string}
+ */
+function getLastUsedWorkshopName() {
+  const recentWithWorkshop = state.maintenanceLogs.find(
+    (m) => typeof m.workshop_name === "string" && m.workshop_name.trim().length > 0
+  );
+  return recentWithWorkshop ? recentWithWorkshop.workshop_name.trim() : "";
 }
 
 /**
@@ -149,6 +181,43 @@ function updateCalculatedLitersPreview() {
     previewEl.classList.add("text-slate-400");
     previewEl.classList.remove("text-sky-700");
   }
+}
+
+/**
+ * Updates the suggested next service kilometer helper banner in the maintenance modal.
+ */
+function updateMaintenanceIntervalHint() {
+  const categorySelect = /** @type {HTMLSelectElement | null} */ (qs("#maint-category"));
+  const odoInput = /** @type {HTMLInputElement | null} */ (qs("#maint-odometer"));
+  const hintBox = qs("#maint-interval-hint");
+  const hintLabel = qs("#maint-interval-label");
+  const applyBtn = qs("#btn-apply-maint-interval");
+
+  if (!categorySelect || !hintBox || !hintLabel || !applyBtn) return;
+
+  const intervalKm = DEFAULT_SERVICE_INTERVALS_KM[categorySelect.value] || 0;
+  if (intervalKm <= 0) {
+    hintBox.classList.add("hidden");
+    hintBox.classList.remove("flex");
+    return;
+  }
+
+  const currentOdo = Number(String(odoInput?.value || "").replace(",", "."));
+  const vehicle = getActiveVehicle();
+  const baseOdo =
+    Number.isFinite(currentOdo) && currentOdo > 0
+      ? currentOdo
+      : Number(vehicle?.current_odometer_km || 0);
+
+  const suggestedDue = Math.round(baseOdo + intervalKm);
+  hintLabel.textContent = `Saran +${formatNumber(intervalKm, 0)} km → Target ${formatNumber(
+    suggestedDue,
+    0
+  )} km`;
+  applyBtn.setAttribute("data-suggested-due", String(suggestedDue));
+
+  hintBox.classList.remove("hidden");
+  hintBox.classList.add("flex");
 }
 
 function renderVehicleSelector() {
@@ -391,11 +460,39 @@ function bindFuelTransactionCalculator() {
   brandSelect?.addEventListener("change", syncFuelPriceFromSelection);
   totalInput?.addEventListener("input", updateCalculatedLitersPreview);
   priceInput?.addEventListener("input", updateCalculatedLitersPreview);
+
+  document.querySelectorAll("[data-fuel-preset]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const presetAmount = btn.getAttribute("data-fuel-preset");
+      if (totalInput && presetAmount) {
+        totalInput.value = presetAmount;
+        updateCalculatedLitersPreview();
+      }
+    });
+  });
+}
+
+function bindMaintenanceIntervalHelpers() {
+  const categorySelect = qs("#maint-category");
+  const odoInput = qs("#maint-odometer");
+  const applyBtn = qs("#btn-apply-maint-interval");
+  const nextDueInput = /** @type {HTMLInputElement | null} */ (qs("#maint-next-due"));
+
+  categorySelect?.addEventListener("change", updateMaintenanceIntervalHint);
+  odoInput?.addEventListener("input", updateMaintenanceIntervalHint);
+
+  applyBtn?.addEventListener("click", () => {
+    const suggested = applyBtn.getAttribute("data-suggested-due");
+    if (nextDueInput && suggested) {
+      nextDueInput.value = suggested;
+    }
+  });
 }
 
 function bindDashboardEvents() {
   bindModalDismissHandlers();
   bindFuelTransactionCalculator();
+  bindMaintenanceIntervalHelpers();
 
   qs("#btn-signout")?.addEventListener("click", async () => {
     try {
@@ -434,10 +531,14 @@ function bindDashboardEvents() {
     const odoInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-odometer"));
     const brandSelect = /** @type {HTMLSelectElement | null} */ (qs("#fuel-brand"));
     const totalInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-total"));
+    const stationInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-station"));
 
     if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
     if (odoInput) odoInput.placeholder = `Terakhir: ${vehicle.current_odometer_km} km`;
     if (totalInput) totalInput.value = "";
+    if (stationInput && !stationInput.value) {
+      stationInput.value = getLastUsedStationName();
+    }
 
     renderFuelSelectOptions(brandSelect, vehicle.fuel_type || "Pertamax");
     syncFuelPriceFromSelection();
@@ -453,8 +554,15 @@ function bindDashboardEvents() {
     }
     const dateInput = /** @type {HTMLInputElement | null} */ (qs("#maint-date"));
     const odoInput = /** @type {HTMLInputElement | null} */ (qs("#maint-odometer"));
+    const workshopInput = /** @type {HTMLInputElement | null} */ (qs("#maint-workshop"));
+
     if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
     if (odoInput) odoInput.placeholder = `Terakhir: ${vehicle.current_odometer_km} km`;
+    if (workshopInput && !workshopInput.value) {
+      workshopInput.value = getLastUsedWorkshopName();
+    }
+
+    updateMaintenanceIntervalHint();
     openModal("modal-add-maint");
   });
 
