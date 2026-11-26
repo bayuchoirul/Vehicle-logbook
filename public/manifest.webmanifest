@@ -1,0 +1,9 @@
+{
+  "name": "Vehicle Logbook — Fuel & Maintenance Telemetry",
+  "short_name": "VehicleLog",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": []
+}

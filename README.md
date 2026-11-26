@@ -1,7 +1,16 @@
-# Vehicle Logbook & Garasi PWA
+# Vehicle Logbook PWA (Supabase Edition)
 
-Aplikasi pencatat servis komponen bergerak, konsumsi BBM, dan manajemen garasi multi-motor berbasis Progressive Web App (PWA) & Google Sheets.
+Aplikasi PWA pencatatan konsumsi BBM (Pertamax) dan perawatan rutin kendaraan bermotor (Honda Vario 110 eSP) berbasis **Supabase PostgreSQL + RLS** dan **Vercel**.
 
-## Struktur Proyek
-- `frontend/` — Antarmuka pengguna modular berbasis Vanilla ES Modules & Tailwind CSS (siap di-deploy langsung di Vercel dengan Root Directory `frontend`).
-- `backend/` — Kode server Google Apps Script (`Code.gs`) yang terhubung dengan spreadsheet `Vehicle_Tracker_DB`.
+## Setup Cepat
+1. Jalankan `database/schema.sql` di **Supabase SQL Editor**.
+2. Atur **Environment Variables** di Vercel:
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+3. Jalankan lokal:
+   ```bash
+   npm install
+   npm run typecheck
+   npm run build
+   ```
+4. Deploy ke Vercel (`git push origin main`).
