@@ -279,3 +279,54 @@ export function formatLiters(liters) {
   }
   return `${formatNumber(Number(liters), 2)} L`;
 }
+
+/**
+ * Detects potential odometer ordering anomalies across existing logs for a vehicle.
+ * Returns a human-readable Indonesian warning string or null when consistent.
+ *
+ * @param {Array<{id?: string, logged_at: string, odometer_km: number | string}>} logs
+ * @param {number} targetOdometer
+ * @param {string} targetDate
+ * @param {string | null} [excludeId=null]
+ * @returns {string | null}
+ */
+export function detectOdometerAnomaly(logs, targetOdometer, targetDate, excludeId = null) {
+  const odo = Number(targetOdometer);
+  if (!Array.isArray(logs) || !Number.isFinite(odo) || odo < 0 || !targetDate) {
+    return null;
+  }
+
+  const candidates = logs.filter((item) => item && item.id !== excludeId);
+  if (!candidates.length) return null;
+
+  const sorted = [...candidates].sort((a, b) => {
+    const dateCmp = String(a.logged_at).localeCompare(String(b.logged_at));
+    if (dateCmp !== 0) return dateCmp;
+    return Number(a.odometer_km) - Number(b.odometer_km);
+  });
+
+  const earlier = sorted.filter((item) => String(item.logged_at) <= String(targetDate));
+  const later = sorted.filter((item) => String(item.logged_at) > String(targetDate));
+
+  if (earlier.length > 0) {
+    const prevMaxOdo = Math.max(...earlier.map((item) => Number(item.odometer_km) || 0));
+    if (odo < prevMaxOdo) {
+      return `Odometer (${formatNumber(odo, 0)} km) lebih kecil dari catatan sebelumnya (${formatNumber(
+        prevMaxOdo,
+        0
+      )} km). Pastikan angka sudah sesuai.`;
+    }
+  }
+
+  if (later.length > 0) {
+    const nextMinOdo = Math.min(...later.map((item) => Number(item.odometer_km) || Infinity));
+    if (Number.isFinite(nextMinOdo) && odo > nextMinOdo) {
+      return `Odometer (${formatNumber(odo, 0)} km) lebih besar dari catatan setelahnya (${formatNumber(
+        nextMinOdo,
+        0
+      )} km). Pastikan urutan tanggal dan odometer benar.`;
+    }
+  }
+
+  return null;
+}

@@ -149,3 +149,17 @@ test("summarizeVehicleMetrics aggregates operating costs and overdue service ale
   assert.equal(summary.serviceReminders[0].overdue, true);
   assert.equal(summary.serviceReminders[0].remainingKm, -100);
 });
+
+test("detectOdometerAnomaly flags lower odometer than earlier log and normalizes valid order", () => {
+  const existingLogs = [
+    { id: "a", logged_at: "2026-11-01", odometer_km: 528000 },
+    { id: "b", logged_at: "2026-11-10", odometer_km: 528408 }
+  ];
+
+  assert.equal(detectOdometerAnomaly(existingLogs, 528500, "2026-11-15"), null);
+  assert.ok(
+    String(detectOdometerAnomaly(existingLogs, 527900, "2026-11-15")).includes("lebih kecil")
+  );
+  // Editing log "b" to its own odometer must not trigger a false warning
+  assert.equal(detectOdometerAnomaly(existingLogs, 528408, "2026-11-10", "b"), null);
+});

@@ -1,4 +1,4 @@
-const CACHE_NAME = "vehicle-logbook-shell-v7";
+const CACHE_NAME = "vehicle-logbook-shell-v9";
 const SHELL_ASSETS = [
   "/",
   "/index.html",

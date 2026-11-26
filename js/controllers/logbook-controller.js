@@ -1,20 +1,35 @@
 import { requireAuth, signOut } from "../services/auth-service.js";
 import {
+  DEFAULT_FUEL_PRICES,
   deleteFuelLog,
   deleteMaintenanceLog,
   listFuelLogs,
+  listFuelPrices,
   listMaintenanceLogs,
-  listVehicles
+  listVehicles,
+  updateFuelLog,
+  updateMaintenanceLog
 } from "../services/vehicle-service.js";
 import {
   MAINTENANCE_CATEGORIES,
   calculateFuelEfficiencySeries,
+  calculateLitersFromCost,
+  detectOdometerAnomaly,
   formatDateID,
   formatIDR,
   formatLiters,
   formatNumber
 } from "../utils/metrics.js";
-import { escapeHtml, qs, showToast } from "../utils/dom.js";
+import {
+  bindModalDismissHandlers,
+  closeModal,
+  escapeHtml,
+  openModal,
+  qs,
+  setButtonLoading,
+  setModalError,
+  showToast
+} from "../utils/dom.js";
 
 const STORAGE_VEHICLE_KEY = "vehicle_logbook_active_vehicle_id";
 
@@ -22,6 +37,8 @@ const state = {
   /** @type {import("../types.js").Vehicle[]} */
   vehicles: [],
   activeVehicleId: "",
+  /** @type {import("../types.js").FuelPriceOption[]} */
+  fuelPrices: [...DEFAULT_FUEL_PRICES],
   /** @type {import("../types.js").FuelLog[]} */
   fuelLogs: [],
   /** @type {import("../types.js").MaintenanceLog[]} */
@@ -30,6 +47,155 @@ const state = {
   filterType: "all",
   searchQuery: ""
 };
+
+function getAllVehicleLogs() {
+  return [...state.fuelLogs, ...state.maintenanceLogs];
+}
+
+/**
+ * Updates the non-blocking odometer warning banner inside an edit modal.
+ * @param {string} modalId
+ * @param {number} odometerKm
+ * @param {string} loggedAt
+ * @param {string | null} excludeId
+ */
+function refreshModalOdometerWarning(modalId, odometerKm, loggedAt, excludeId) {
+  const modalEl = qs(`#${modalId}`);
+  const warningEl = modalEl?.querySelector("[data-odo-warning]");
+  if (!warningEl) return;
+
+  const warningText = detectOdometerAnomaly(
+    getAllVehicleLogs(),
+    odometerKm,
+    loggedAt,
+    excludeId
+  );
+  if (warningText) {
+    warningEl.textContent = warningText;
+    warningEl.classList.remove("hidden");
+  } else {
+    warningEl.textContent = "";
+    warningEl.classList.add("hidden");
+  }
+}
+
+/**
+ * Populates the edit fuel brand selector while preserving any custom brand already saved on the log.
+ * @param {string} currentBrand
+ */
+function populateEditFuelBrandSelect(currentBrand) {
+  const select = /** @type {HTMLSelectElement | null} */ (qs("#edit-fuel-brand"));
+  if (!select) return;
+
+  /** @type {Map<string, import("../types.js").FuelPriceOption[]>} */
+  const grouped = new Map();
+  for (const item of state.fuelPrices) {
+    const list = grouped.get(item.brand) || [];
+    list.push(item);
+    grouped.set(item.brand, list);
+  }
+
+  const targetLower = String(currentBrand || "").trim().toLowerCase();
+  let matched = false;
+
+  const groupsHtml = [...grouped.entries()]
+    .map(([brand, items]) => {
+      const optionsHtml = items
+        .map((item) => {
+          const isSelected = item.product_name.toLowerCase() === targetLower;
+          if (isSelected) matched = true;
+          return `<option value="${escapeHtml(item.product_name)}" ${
+            isSelected ? "selected" : ""
+          }>${escapeHtml(item.product_name)}</option>`;
+        })
+        .join("");
+      return `<optgroup label="${escapeHtml(brand)}">${optionsHtml}</optgroup>`;
+    })
+    .join("");
+
+  if (!matched && currentBrand) {
+    select.innerHTML =
+      `<option value="${escapeHtml(currentBrand)}" selected>${escapeHtml(
+        currentBrand
+      )}</option>` + groupsHtml;
+  } else {
+    select.innerHTML = groupsHtml;
+  }
+}
+
+function updateEditFuelLitersPreview() {
+  const totalInput = /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-total"));
+  const priceInput = /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-price"));
+  const previewEl = qs("#edit-fuel-liters-preview");
+  if (!previewEl) return;
+
+  const totalCost = Number(String(totalInput?.value || "").replace(",", "."));
+  const pricePerLiter = Number(String(priceInput?.value || "").replace(",", "."));
+  const liters = calculateLitersFromCost(totalCost, pricePerLiter);
+  previewEl.textContent = liters > 0 ? formatLiters(liters) : "0,00 L";
+}
+
+function openEditFuelModal(logId) {
+  const log = state.fuelLogs.find((item) => item.id === logId);
+  if (!log) return;
+
+  setModalError("modal-edit-fuel", "");
+  /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-id")).value = log.id;
+  /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-date")).value = log.logged_at;
+  /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-odometer")).value = String(
+    log.odometer_km
+  );
+  /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-total")).value = String(log.total_cost);
+  /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-price")).value = String(
+    log.price_per_liter
+  );
+  /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-station")).value =
+    log.station_name || "";
+  /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-notes")).value = log.notes || "";
+  /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-full-tank")).checked =
+    log.is_full_tank !== false;
+
+  populateEditFuelBrandSelect(log.fuel_brand || "Pertamax");
+  updateEditFuelLitersPreview();
+  refreshModalOdometerWarning(
+    "modal-edit-fuel",
+    Number(log.odometer_km),
+    log.logged_at,
+    log.id
+  );
+  openModal("modal-edit-fuel");
+}
+
+function openEditMaintModal(logId) {
+  const log = state.maintenanceLogs.find((item) => item.id === logId);
+  if (!log) return;
+
+  setModalError("modal-edit-maint", "");
+  /** @type {HTMLInputElement | null} */ (qs("#edit-maint-id")).value = log.id;
+  /** @type {HTMLInputElement | null} */ (qs("#edit-maint-date")).value = log.logged_at;
+  /** @type {HTMLInputElement | null} */ (qs("#edit-maint-odometer")).value = String(
+    log.odometer_km
+  );
+  /** @type {HTMLSelectElement | null} */ (qs("#edit-maint-category")).value =
+    log.category || "other";
+  /** @type {HTMLInputElement | null} */ (qs("#edit-maint-title")).value = log.title || "";
+  /** @type {HTMLInputElement | null} */ (qs("#edit-maint-cost")).value = String(
+    log.total_cost
+  );
+  /** @type {HTMLInputElement | null} */ (qs("#edit-maint-next-due")).value =
+    log.next_due_km !== null && log.next_due_km !== undefined ? String(log.next_due_km) : "";
+  /** @type {HTMLInputElement | null} */ (qs("#edit-maint-workshop")).value =
+    log.workshop_name || "";
+  /** @type {HTMLInputElement | null} */ (qs("#edit-maint-notes")).value = log.notes || "";
+
+  refreshModalOdometerWarning(
+    "modal-edit-maint",
+    Number(log.odometer_km),
+    log.logged_at,
+    log.id
+  );
+  openModal("modal-edit-maint");
+}
 
 function getFilteredUnifiedRows() {
   const efficiencyMap = new Map(
@@ -146,14 +312,24 @@ function renderLogbookTable() {
             ${escapeHtml(formatIDR(row.total_cost))}
           </td>
           <td class="whitespace-nowrap px-4 py-3 text-right">
-            <button
-              type="button"
-              data-delete-kind="${row.kind}"
-              data-delete-id="${escapeHtml(row.id)}"
-              class="rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
-            >
-              Hapus
-            </button>
+            <div class="inline-flex items-center gap-1.5">
+              <button
+                type="button"
+                data-edit-kind="${row.kind}"
+                data-edit-id="${escapeHtml(row.id)}"
+                class="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                data-delete-kind="${row.kind}"
+                data-delete-id="${escapeHtml(row.id)}"
+                class="rounded-lg border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
+              >
+                Hapus
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -215,7 +391,122 @@ async function loadVehicleLogs() {
   renderLogbookTable();
 }
 
+function bindEditForms() {
+  const editFuelTotal = qs("#edit-fuel-total");
+  const editFuelPrice = qs("#edit-fuel-price");
+  editFuelTotal?.addEventListener("input", updateEditFuelLitersPreview);
+  editFuelPrice?.addEventListener("input", updateEditFuelLitersPreview);
+
+  const editFuelOdo = /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-odometer"));
+  const editFuelDate = /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-date"));
+  const editFuelId = /** @type {HTMLInputElement | null} */ (qs("#edit-fuel-id"));
+  const onFuelOdoChange = () => {
+    refreshModalOdometerWarning(
+      "modal-edit-fuel",
+      Number(String(editFuelOdo?.value || "0").replace(",", ".")),
+      editFuelDate?.value || "",
+      editFuelId?.value || null
+    );
+  };
+  editFuelOdo?.addEventListener("input", onFuelOdoChange);
+  editFuelDate?.addEventListener("change", onFuelOdoChange);
+
+  const editMaintOdo = /** @type {HTMLInputElement | null} */ (qs("#edit-maint-odometer"));
+  const editMaintDate = /** @type {HTMLInputElement | null} */ (qs("#edit-maint-date"));
+  const editMaintId = /** @type {HTMLInputElement | null} */ (qs("#edit-maint-id"));
+  const onMaintOdoChange = () => {
+    refreshModalOdometerWarning(
+      "modal-edit-maint",
+      Number(String(editMaintOdo?.value || "0").replace(",", ".")),
+      editMaintDate?.value || "",
+      editMaintId?.value || null
+    );
+  };
+  editMaintOdo?.addEventListener("input", onMaintOdoChange);
+  editMaintDate?.addEventListener("change", onMaintOdoChange);
+
+  qs("#form-edit-fuel")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setModalError("modal-edit-fuel", "");
+    const form = /** @type {HTMLFormElement} */ (event.target);
+    const submitBtn = /** @type {HTMLButtonElement | null} */ (qs("#btn-submit-edit-fuel"));
+    setButtonLoading(submitBtn, true);
+
+    try {
+      const formData = new FormData(form);
+      const logId = String(formData.get("id") || "");
+      const totalCost = Number(String(formData.get("total_cost") || "").replace(",", "."));
+      const pricePerLiter = Number(
+        String(formData.get("price_per_liter") || "").replace(",", ".")
+      );
+      const calculatedLiters = calculateLitersFromCost(totalCost, pricePerLiter);
+
+      await updateFuelLog(logId, {
+        logged_at: String(formData.get("logged_at") || ""),
+        odometer_km: Number(String(formData.get("odometer_km") || "").replace(",", ".")),
+        liters: calculatedLiters,
+        price_per_liter: pricePerLiter,
+        total_cost: totalCost,
+        fuel_brand: String(formData.get("fuel_brand") || "Pertamax"),
+        station_name: String(formData.get("station_name") || ""),
+        is_full_tank: formData.get("is_full_tank") === "on",
+        notes: String(formData.get("notes") || "")
+      });
+
+      await loadVehicleLogs();
+      closeModal("modal-edit-fuel");
+      showToast("Catatan BBM berhasil diperbarui.", "success");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Gagal memperbarui catatan BBM.";
+      setModalError("modal-edit-fuel", msg);
+      showToast(msg, "error");
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+
+  qs("#form-edit-maint")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setModalError("modal-edit-maint", "");
+    const form = /** @type {HTMLFormElement} */ (event.target);
+    const submitBtn = /** @type {HTMLButtonElement | null} */ (qs("#btn-submit-edit-maint"));
+    setButtonLoading(submitBtn, true);
+
+    try {
+      const formData = new FormData(form);
+      const logId = String(formData.get("id") || "");
+      const nextDueRaw = String(formData.get("next_due_km") || "").trim();
+
+      await updateMaintenanceLog(logId, {
+        logged_at: String(formData.get("logged_at") || ""),
+        odometer_km: Number(String(formData.get("odometer_km") || "").replace(",", ".")),
+        category: /** @type {import("../types.js").MaintenanceLog["category"]} */ (
+          String(formData.get("category") || "other")
+        ),
+        title: String(formData.get("title") || ""),
+        workshop_name: String(formData.get("workshop_name") || ""),
+        total_cost: Number(String(formData.get("total_cost") || "0").replace(",", ".")),
+        next_due_km: nextDueRaw ? Number(nextDueRaw.replace(",", ".")) : null,
+        notes: String(formData.get("notes") || "")
+      });
+
+      await loadVehicleLogs();
+      closeModal("modal-edit-maint");
+      showToast("Catatan servis berhasil diperbarui.", "success");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Gagal memperbarui catatan servis.";
+      setModalError("modal-edit-maint", msg);
+      showToast(msg, "error");
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+}
+
 function bindLogbookEvents() {
+  bindModalDismissHandlers();
+  bindEditForms();
+
   qs("#btn-signout")?.addEventListener("click", async () => {
     await signOut("./login.html");
   });
@@ -252,6 +543,20 @@ function bindLogbookEvents() {
 
   qs("#logbook-table-body")?.addEventListener("click", async (event) => {
     const target = /** @type {HTMLElement} */ (event.target);
+
+    const editBtn = target.closest("[data-edit-id]");
+    if (editBtn) {
+      const editId = editBtn.getAttribute("data-edit-id");
+      const editKind = editBtn.getAttribute("data-edit-kind");
+      if (!editId || !editKind) return;
+      if (editKind === "fuel") {
+        openEditFuelModal(editId);
+      } else {
+        openEditMaintModal(editId);
+      }
+      return;
+    }
+
     const deleteBtn = target.closest("[data-delete-id]");
     if (!deleteBtn) return;
 
@@ -283,7 +588,10 @@ async function initLogbookPage() {
 
     bindLogbookEvents();
 
-    state.vehicles = await listVehicles();
+    const [vehicles, fuelPrices] = await Promise.all([listVehicles(), listFuelPrices()]);
+    state.vehicles = vehicles;
+    state.fuelPrices = fuelPrices;
+
     const select = /** @type {HTMLSelectElement | null} */ (qs("#vehicle-selector"));
     const savedId = localStorage.getItem(STORAGE_VEHICLE_KEY) || "";
     if (savedId && state.vehicles.some((v) => v.id === savedId)) {
