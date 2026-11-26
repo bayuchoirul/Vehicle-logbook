@@ -1,10 +1,25 @@
 -- ============================================================================
--- Vehicle Logbook — Supabase PostgreSQL Schema, Migration & RLS
+-- Vehicle Logbook — Supabase PostgreSQL Schema, Fuel Prices Master & RLS
 -- ============================================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 1. Vehicles Table
+-- 1. Fuel Prices Reference Table (Indonesia — Jabodetabek / Jawa)
+CREATE TABLE IF NOT EXISTS public.fuel_prices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand TEXT NOT NULL CHECK (char_length(trim(brand)) > 0),
+  product_name TEXT NOT NULL UNIQUE CHECK (char_length(trim(product_name)) > 0),
+  spec_label TEXT NOT NULL DEFAULT '',
+  price_per_liter NUMERIC(10, 2) NOT NULL CHECK (price_per_liter > 0),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  sort_order INT NOT NULL DEFAULT 100,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fuel_prices_active_sort
+  ON public.fuel_prices(is_active, sort_order ASC, brand ASC);
+
+-- 2. Vehicles Table
 CREATE TABLE IF NOT EXISTS public.vehicles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -19,7 +34,6 @@ CREATE TABLE IF NOT EXISTS public.vehicles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Idempotent column upgrades if an older `vehicles` table already existed
 ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS name TEXT;
 ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS plate_number TEXT DEFAULT '';
@@ -33,7 +47,7 @@ ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFA
 
 CREATE INDEX IF NOT EXISTS idx_vehicles_user_id ON public.vehicles(user_id);
 
--- 2. Fuel Logs Table
+-- 3. Fuel Logs Table
 CREATE TABLE IF NOT EXISTS public.fuel_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -66,7 +80,7 @@ ALTER TABLE public.fuel_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEF
 CREATE INDEX IF NOT EXISTS idx_fuel_logs_vehicle_date ON public.fuel_logs(vehicle_id, logged_at DESC, odometer_km DESC);
 CREATE INDEX IF NOT EXISTS idx_fuel_logs_user_id ON public.fuel_logs(user_id);
 
--- 3. Maintenance Logs Table
+-- 4. Maintenance Logs Table
 CREATE TABLE IF NOT EXISTS public.maintenance_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -99,41 +113,20 @@ ALTER TABLE public.maintenance_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAM
 CREATE INDEX IF NOT EXISTS idx_maintenance_logs_vehicle_date ON public.maintenance_logs(vehicle_id, logged_at DESC, odometer_km DESC);
 CREATE INDEX IF NOT EXISTS idx_maintenance_logs_user_id ON public.maintenance_logs(user_id);
 
--- 4. Relax NOT NULL constraints on any legacy columns from older schema versions
-DO $$
-DECLARE
-  rec RECORD;
-BEGIN
-  FOR rec IN
-    SELECT table_name, column_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name IN ('vehicles', 'fuel_logs', 'maintenance_logs')
-      AND is_nullable = 'NO'
-      AND column_name NOT IN (
-        'id', 'user_id', 'vehicle_id', 'name', 'logged_at',
-        'odometer_km', 'liters', 'price_per_liter', 'total_cost', 'title'
-      )
-  LOOP
-    EXECUTE format(
-      'ALTER TABLE public.%I ALTER COLUMN %I DROP NOT NULL',
-      rec.table_name,
-      rec.column_name
-    );
-  END LOOP;
-END;
-$$;
+-- 5. Relax NOT NULL constraints on any legacy columns from older schema versions
+DO $$ DECLARE rec RECORD; BEGIN FOR rec IN SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('vehicles', 'fuel_logs', 'maintenance_logs') AND is_nullable = 'NO' AND column_name NOT IN ( 'id', 'user_id', 'vehicle_id', 'name', 'logged_at', 'odometer_km', 'liters', 'price_per_liter', 'total_cost', 'title' ) LOOP EXECUTE format( 'ALTER TABLE public.\%I ALTER COLUMN \%I DROP NOT NULL', rec.table_name, rec.column_name ); END LOOP; END; $$;
 
--- 5. Triggers: Auto-update updated_at & sync highest odometer reading to vehicles
+-- 6. Triggers: Auto-update updated_at & sync highest odometer reading to vehicles
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$;
+AS $$ BEGIN NEW.updated_at = now(); RETURN NEW; END; $$;
+
+DROP TRIGGER IF EXISTS trg_fuel_prices_updated_at ON public.fuel_prices;
+CREATE TRIGGER trg_fuel_prices_updated_at
+BEFORE UPDATE ON public.fuel_prices
+FOR EACH ROW
+EXECUTE FUNCTION public.set_updated_at();
 
 DROP TRIGGER IF EXISTS trg_vehicles_updated_at ON public.vehicles;
 CREATE TRIGGER trg_vehicles_updated_at
@@ -145,15 +138,7 @@ CREATE OR REPLACE FUNCTION public.sync_vehicle_odometer()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-AS $$
-BEGIN
-  UPDATE public.vehicles
-  SET current_odometer_km = GREATEST(COALESCE(current_odometer_km, 0), NEW.odometer_km),
-      updated_at = now()
-  WHERE id = NEW.vehicle_id;
-  RETURN NEW;
-END;
-$$;
+AS $$ BEGIN UPDATE public.vehicles SET current_odometer_km = GREATEST(COALESCE(current_odometer_km, 0), NEW.odometer_km), updated_at = now() WHERE id = NEW.vehicle_id; RETURN NEW; END; $$;
 
 DROP TRIGGER IF EXISTS trg_fuel_logs_sync_odometer ON public.fuel_logs;
 CREATE TRIGGER trg_fuel_logs_sync_odometer
@@ -167,10 +152,36 @@ AFTER INSERT OR UPDATE OF odometer_km ON public.maintenance_logs
 FOR EACH ROW
 EXECUTE FUNCTION public.sync_vehicle_odometer();
 
--- 6. Enable Row Level Security (RLS)
+-- 7. Seed Indonesian Fuel Prices (Jabodetabek / Jawa — dapat diedit langsung di Table Editor)
+INSERT INTO public.fuel_prices (brand, product_name, spec_label, price_per_liter, is_active, sort_order)
+VALUES
+  ('Pertamina', 'Pertamax', 'RON 92', 12100, true, 10),
+  ('Pertamina', 'Pertalite', 'RON 90', 10000, true, 20),
+  ('Pertamina', 'Pertamax Green 95', 'RON 95', 13150, true, 30),
+  ('Pertamina', 'Pertamax Turbo', 'RON 98', 13500, true, 40),
+  ('Pertamina', 'Dexlite', 'CN 51', 13050, true, 50),
+  ('Pertamina', 'Pertamina Dex', 'CN 53', 13400, true, 60),
+  ('Shell', 'Shell Super', 'RON 92', 12290, true, 70),
+  ('Shell', 'Shell V-Power', 'RON 95', 13340, true, 80),
+  ('Shell', 'Shell V-Power Nitro+', 'RON 98', 13570, true, 90),
+  ('Shell', 'Shell V-Power Diesel', 'CN 51', 13900, true, 100),
+  ('BP', 'BP 92', 'RON 92', 12290, true, 110),
+  ('BP', 'BP Ultimate', 'RON 95', 13340, true, 120),
+  ('Vivo', 'Revvo 90', 'RON 90', 11900, true, 130),
+  ('Vivo', 'Revvo 92', 'RON 92', 12200, true, 140),
+  ('Vivo', 'Revvo 95', 'RON 95', 13200, true, 150)
+ON CONFLICT (product_name) DO NOTHING;
+
+-- 8. Enable Row Level Security (RLS)
+ALTER TABLE public.fuel_prices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fuel_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.maintenance_logs ENABLE ROW LEVEL SECURITY;
+
+-- Fuel Prices Policy (Authenticated users can read catalog; manage prices in Supabase Dashboard)
+DROP POLICY IF EXISTS "fuel_prices_select_authenticated" ON public.fuel_prices;
+CREATE POLICY "fuel_prices_select_authenticated" ON public.fuel_prices
+  FOR SELECT USING (auth.role() = 'authenticated');
 
 -- Vehicles Policies
 DROP POLICY IF EXISTS "vehicles_select_own" ON public.vehicles;
@@ -223,5 +234,5 @@ DROP POLICY IF EXISTS "maintenance_logs_delete_own" ON public.maintenance_logs;
 CREATE POLICY "maintenance_logs_delete_own" ON public.maintenance_logs
   FOR DELETE USING (auth.uid() = user_id);
 
--- 7. Reload PostgREST schema cache immediately
+-- 9. Reload PostgREST schema cache immediately
 NOTIFY pgrst, 'reload schema';

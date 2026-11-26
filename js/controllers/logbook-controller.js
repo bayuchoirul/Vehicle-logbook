@@ -40,7 +40,7 @@ function getFilteredUnifiedRows() {
     kind: /** @type {const} */ ("fuel"),
     logged_at: f.logged_at,
     odometer_km: Number(f.odometer_km),
-    title: `${f.fuel_brand || "BBM"} (${formatNumber(f.liters, 2)} L @ ${formatIDR(
+    title: `${f.fuel_brand || "BBM"} (${formatNumber(f.liters, 3)} L @ ${formatIDR(
       f.price_per_liter
     )})`,
     meta: [

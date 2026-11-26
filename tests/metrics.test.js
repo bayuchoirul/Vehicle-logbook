@@ -2,8 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculateFuelEfficiencySeries,
+  calculateLitersFromCost,
   summarizeVehicleMetrics
 } from "../js/utils/metrics.js";
+
+test("calculateLitersFromCost computes accurate liters from transaction cost and price per liter", () => {
+  assert.equal(calculateLitersFromCost(35000, 12100), 2.893);
+  assert.equal(calculateLitersFromCost(36300, 12100), 3);
+  assert.equal(calculateLitersFromCost(0, 12100), 0);
+  assert.equal(calculateLitersFromCost(35000, 0), 0);
+});
 
 test("calculateFuelEfficiencySeries computes accurate full-to-full km/L and Rp/km", () => {
   const logs = [

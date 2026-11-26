@@ -13,6 +13,23 @@ export const MAINTENANCE_CATEGORIES = Object.freeze({
 });
 
 /**
+ * Computes purchased fuel volume in liters from total transaction cost and price per liter.
+ * Rounded to 3 decimal places (standard SPBU dispenser precision).
+ *
+ * @param {number} totalCost
+ * @param {number} pricePerLiter
+ * @returns {number}
+ */
+export function calculateLitersFromCost(totalCost, pricePerLiter) {
+  const cost = Number(totalCost);
+  const price = Number(pricePerLiter);
+  if (!Number.isFinite(cost) || !Number.isFinite(price) || cost <= 0 || price <= 0) {
+    return 0;
+  }
+  return Number((cost / price).toFixed(3));
+}
+
+/**
  * Computes full-to-full fuel efficiency points (km/L and Rp/km).
  * Intermediate partial fill-ups (`is_full_tank === false`) are accumulated until the next full fill-up.
  *

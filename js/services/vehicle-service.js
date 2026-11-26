@@ -1,4 +1,27 @@
 import { getSupabaseClient } from "./supabase-client.js";
+import { calculateLitersFromCost } from "../utils/metrics.js";
+
+/**
+ * Fallback Indonesian fuel price catalog (Jabodetabek / Jawa) if `fuel_prices` is unavailable.
+ * @type {ReadonlyArray<import("../types.js").FuelPriceOption>}
+ */
+export const DEFAULT_FUEL_PRICES = Object.freeze([
+  { brand: "Pertamina", product_name: "Pertamax", spec_label: "RON 92", price_per_liter: 12100, sort_order: 10 },
+  { brand: "Pertamina", product_name: "Pertalite", spec_label: "RON 90", price_per_liter: 10000, sort_order: 20 },
+  { brand: "Pertamina", product_name: "Pertamax Green 95", spec_label: "RON 95", price_per_liter: 13150, sort_order: 30 },
+  { brand: "Pertamina", product_name: "Pertamax Turbo", spec_label: "RON 98", price_per_liter: 13500, sort_order: 40 },
+  { brand: "Pertamina", product_name: "Dexlite", spec_label: "CN 51", price_per_liter: 13050, sort_order: 50 },
+  { brand: "Pertamina", product_name: "Pertamina Dex", spec_label: "CN 53", price_per_liter: 13400, sort_order: 60 },
+  { brand: "Shell", product_name: "Shell Super", spec_label: "RON 92", price_per_liter: 12290, sort_order: 70 },
+  { brand: "Shell", product_name: "Shell V-Power", spec_label: "RON 95", price_per_liter: 13340, sort_order: 80 },
+  { brand: "Shell", product_name: "Shell V-Power Nitro+", spec_label: "RON 98", price_per_liter: 13570, sort_order: 90 },
+  { brand: "Shell", product_name: "Shell V-Power Diesel", spec_label: "CN 51", price_per_liter: 13900, sort_order: 100 },
+  { brand: "BP", product_name: "BP 92", spec_label: "RON 92", price_per_liter: 12290, sort_order: 110 },
+  { brand: "BP", product_name: "BP Ultimate", spec_label: "RON 95", price_per_liter: 13340, sort_order: 120 },
+  { brand: "Vivo", product_name: "Revvo 90", spec_label: "RON 90", price_per_liter: 11900, sort_order: 130 },
+  { brand: "Vivo", product_name: "Revvo 92", spec_label: "RON 92", price_per_liter: 12200, sort_order: 140 },
+  { brand: "Vivo", product_name: "Revvo 95", spec_label: "RON 95", price_per_liter: 13200, sort_order: 150 }
+]);
 
 /**
  * Parses numeric input safely, supporting both dot and comma decimal separators.
@@ -39,6 +62,33 @@ async function getAuthenticatedUserId() {
     throw new Error("Sesi login tidak valid. Silakan login kembali.");
   }
   return data.user.id;
+}
+
+/**
+ * Fetches active Indonesian fuel prices from `public.fuel_prices` with safe local fallback.
+ * @returns {Promise<import("../types.js").FuelPriceOption[]>}
+ */
+export async function listFuelPrices() {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from("fuel_prices")
+      .select("id, brand, product_name, spec_label, price_per_liter, is_active, sort_order")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("product_name", { ascending: true });
+
+    if (error || !data || data.length === 0) {
+      return [...DEFAULT_FUEL_PRICES];
+    }
+
+    return data.map((row) => ({
+      ...row,
+      price_per_liter: Number(row.price_per_liter)
+    }));
+  } catch {
+    return [...DEFAULT_FUEL_PRICES];
+  }
 }
 
 /**
@@ -136,7 +186,7 @@ export async function listFuelLogs(vehicleId) {
 }
 
 /**
- * Validates and creates a new fuel log entry.
+ * Validates and creates a new fuel log entry from transaction total cost and price per liter.
  * @param {Partial<import("../types.js").FuelLog>} payload
  * @returns {Promise<import("../types.js").FuelLog>}
  */
@@ -145,21 +195,35 @@ export async function createFuelLog(payload) {
   if (!payload.vehicle_id) throw new Error("Kendaraan belum dipilih.");
 
   const odometerKm = parseNumericInput(payload.odometer_km);
-  const liters = parseNumericInput(payload.liters);
   const pricePerLiter = parseNumericInput(payload.price_per_liter);
   const parsedTotal = parseNumericInput(payload.total_cost);
-  const totalCost = Number.isFinite(parsedTotal)
-    ? parsedTotal
-    : Math.round(liters * pricePerLiter);
+  const parsedLiters = parseNumericInput(payload.liters);
 
   if (!Number.isFinite(odometerKm) || odometerKm < 0) {
     throw new Error("Odometer harus valid (>= 0 km).");
   }
-  if (!Number.isFinite(liters) || liters <= 0) {
-    throw new Error("Jumlah liter BBM harus lebih dari 0.");
+  if (!Number.isFinite(pricePerLiter) || pricePerLiter <= 0) {
+    throw new Error("Harga per liter harus lebih dari Rp 0.");
   }
-  if (!Number.isFinite(pricePerLiter) || pricePerLiter < 0) {
-    throw new Error("Harga per liter tidak valid.");
+
+  const totalCost =
+    Number.isFinite(parsedTotal) && parsedTotal > 0
+      ? Math.round(parsedTotal)
+      : Number.isFinite(parsedLiters) && parsedLiters > 0
+        ? Math.round(parsedLiters * pricePerLiter)
+        : 0;
+
+  if (totalCost <= 0) {
+    throw new Error("Total bayar transaksi harus lebih dari Rp 0.");
+  }
+
+  const liters =
+    Number.isFinite(parsedLiters) && parsedLiters > 0
+      ? Number(parsedLiters.toFixed(3))
+      : calculateLitersFromCost(totalCost, pricePerLiter);
+
+  if (!Number.isFinite(liters) || liters <= 0) {
+    throw new Error("Volume liter hasil kalkulasi tidak valid.");
   }
 
   const supabase = getSupabaseClient();

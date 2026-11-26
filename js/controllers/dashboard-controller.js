@@ -1,14 +1,17 @@
 import { requireAuth, signOut } from "../services/auth-service.js";
 import {
+  DEFAULT_FUEL_PRICES,
   createFuelLog,
   createMaintenanceLog,
   createVehicle,
   listFuelLogs,
+  listFuelPrices,
   listMaintenanceLogs,
   listVehicles
 } from "../services/vehicle-service.js";
 import {
   MAINTENANCE_CATEGORIES,
+  calculateLitersFromCost,
   formatDateID,
   formatIDR,
   formatNumber,
@@ -32,6 +35,8 @@ const state = {
   vehicles: [],
   /** @type {string} */
   activeVehicleId: "",
+  /** @type {import("../types.js").FuelPriceOption[]} */
+  fuelPrices: [...DEFAULT_FUEL_PRICES],
   /** @type {import("../types.js").FuelLog[]} */
   fuelLogs: [],
   /** @type {import("../types.js").MaintenanceLog[]} */
@@ -44,6 +49,105 @@ const state = {
  */
 function getActiveVehicle() {
   return state.vehicles.find((v) => v.id === state.activeVehicleId) || state.vehicles[0] || null;
+}
+
+/**
+ * Finds a fuel price entry by product name (case-insensitive).
+ * @param {string} productName
+ * @returns {import("../types.js").FuelPriceOption | undefined}
+ */
+function findFuelOption(productName) {
+  const needle = String(productName || "").trim().toLowerCase();
+  return state.fuelPrices.find((item) => item.product_name.toLowerCase() === needle);
+}
+
+/**
+ * Populates a <select> element with grouped <optgroup> Indonesian fuel products.
+ * @param {HTMLSelectElement | null} selectEl
+ * @param {string} [selectedProductName="Pertamax"]
+ */
+function renderFuelSelectOptions(selectEl, selectedProductName = "Pertamax") {
+  if (!selectEl) return;
+
+  /** @type {Map<string, import("../types.js").FuelPriceOption[]>} */
+  const grouped = new Map();
+  for (const item of state.fuelPrices) {
+    const list = grouped.get(item.brand) || [];
+    list.push(item);
+    grouped.set(item.brand, list);
+  }
+
+  const targetLower = String(selectedProductName || "Pertamax").trim().toLowerCase();
+  let matched = false;
+
+  const groupsHtml = [...grouped.entries()]
+    .map(([brand, items]) => {
+      const optionsHtml = items
+        .map((item) => {
+          const isSelected = item.product_name.toLowerCase() === targetLower;
+          if (isSelected) matched = true;
+          const specText = item.spec_label ? ` (${item.spec_label})` : "";
+          const label = `${item.product_name}${specText} — ${formatIDR(item.price_per_liter)}/L`;
+          return `<option value="${escapeHtml(item.product_name)}" data-price="${
+            item.price_per_liter
+          }" ${isSelected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+        })
+        .join("");
+      return `<optgroup label="${escapeHtml(brand)}">${optionsHtml}</optgroup>`;
+    })
+    .join("");
+
+  if (!matched && selectedProductName) {
+    const customOpt = `<option value="${escapeHtml(selectedProductName)}" selected>${escapeHtml(
+      selectedProductName
+    )}</option>`;
+    selectEl.innerHTML = customOpt + groupsHtml;
+  } else {
+    selectEl.innerHTML = groupsHtml;
+  }
+}
+
+/**
+ * Synchronizes `#fuel-price` from the currently selected `#fuel-brand` option and refreshes liter preview.
+ */
+function syncFuelPriceFromSelection() {
+  const brandSelect = /** @type {HTMLSelectElement | null} */ (qs("#fuel-brand"));
+  const priceInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-price"));
+  if (!brandSelect || !priceInput) return;
+
+  const selectedOption = brandSelect.options[brandSelect.selectedIndex];
+  const datasetPrice = Number(selectedOption?.dataset?.price || 0);
+  if (datasetPrice > 0) {
+    priceInput.value = String(datasetPrice);
+  } else {
+    const found = findFuelOption(brandSelect.value);
+    if (found) priceInput.value = String(found.price_per_liter);
+  }
+  updateCalculatedLitersPreview();
+}
+
+/**
+ * Computes and displays estimated liters from `Total Bayar (Rp) / Harga per Liter (Rp)`.
+ */
+function updateCalculatedLitersPreview() {
+  const totalInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-total"));
+  const priceInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-price"));
+  const previewEl = qs("#fuel-liters-preview");
+  if (!previewEl) return;
+
+  const totalCost = Number(String(totalInput?.value || "").replace(",", "."));
+  const pricePerLiter = Number(String(priceInput?.value || "").replace(",", "."));
+  const liters = calculateLitersFromCost(totalCost, pricePerLiter);
+
+  if (liters > 0) {
+    previewEl.textContent = `${formatNumber(liters, 3)} L`;
+    previewEl.classList.remove("text-slate-400");
+    previewEl.classList.add("text-sky-700");
+  } else {
+    previewEl.textContent = "0,000 L";
+    previewEl.classList.add("text-slate-400");
+    previewEl.classList.remove("text-sky-700");
+  }
 }
 
 function renderVehicleSelector() {
@@ -204,7 +308,7 @@ function renderRecentLogs() {
       type: /** @type {const} */ ("fuel"),
       logged_at: f.logged_at,
       odometer_km: Number(f.odometer_km),
-      title: `${f.fuel_brand || "BBM"} • ${formatNumber(f.liters, 2)} L`,
+      title: `${f.fuel_brand || "BBM"} • ${formatNumber(f.liters, 3)} L`,
       subtitle: f.station_name || (f.is_full_tank ? "Full Tank" : "Isi Sebagian"),
       cost: Number(f.total_cost)
     })),
@@ -279,26 +383,19 @@ async function loadActiveVehicleData() {
   renderDashboard();
 }
 
-function bindFuelAutoCalculation() {
-  const litersInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-liters"));
-  const priceInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-price"));
+function bindFuelTransactionCalculator() {
+  const brandSelect = /** @type {HTMLSelectElement | null} */ (qs("#fuel-brand"));
   const totalInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-total"));
+  const priceInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-price"));
 
-  const recalcTotal = () => {
-    const liters = Number(String(litersInput?.value || "").replace(",", "."));
-    const price = Number(String(priceInput?.value || "").replace(",", "."));
-    if (liters > 0 && price > 0 && totalInput) {
-      totalInput.value = String(Math.round(liters * price));
-    }
-  };
-
-  litersInput?.addEventListener("input", recalcTotal);
-  priceInput?.addEventListener("input", recalcTotal);
+  brandSelect?.addEventListener("change", syncFuelPriceFromSelection);
+  totalInput?.addEventListener("input", updateCalculatedLitersPreview);
+  priceInput?.addEventListener("input", updateCalculatedLitersPreview);
 }
 
 function bindDashboardEvents() {
   bindModalDismissHandlers();
-  bindFuelAutoCalculation();
+  bindFuelTransactionCalculator();
 
   qs("#btn-signout")?.addEventListener("click", async () => {
     try {
@@ -317,10 +414,16 @@ function bindDashboardEvents() {
   // Open Vehicle Modal
   const openVehicleHandlers = ["#btn-open-vehicle-modal", "#btn-empty-add-vehicle"];
   for (const selector of openVehicleHandlers) {
-    qs(selector)?.addEventListener("click", () => openModal("modal-add-vehicle"));
+    qs(selector)?.addEventListener("click", () => {
+      const vehicleFuelSelect = /** @type {HTMLSelectElement | null} */ (
+        qs("#vehicle-fuel-type")
+      );
+      renderFuelSelectOptions(vehicleFuelSelect, "Pertamax");
+      openModal("modal-add-vehicle");
+    });
   }
 
-  // Open Fuel Modal with sensible defaults
+  // Open Fuel Modal with vehicle's default fuel option & active price
   qs("#btn-open-fuel-modal")?.addEventListener("click", () => {
     const vehicle = getActiveVehicle();
     if (!vehicle) {
@@ -328,12 +431,18 @@ function bindDashboardEvents() {
       openModal("modal-add-vehicle");
       return;
     }
+
     const dateInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-date"));
     const odoInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-odometer"));
-    const brandInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-brand"));
+    const brandSelect = /** @type {HTMLSelectElement | null} */ (qs("#fuel-brand"));
+    const totalInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-total"));
+
     if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
     if (odoInput) odoInput.placeholder = `Terakhir: ${vehicle.current_odometer_km} km`;
-    if (brandInput && !brandInput.value) brandInput.value = vehicle.fuel_type || "Pertamax";
+    if (totalInput) totalInput.value = "";
+
+    renderFuelSelectOptions(brandSelect, vehicle.fuel_type || "Pertamax");
+    syncFuelPriceFromSelection();
     openModal("modal-add-fuel");
   });
 
@@ -391,7 +500,7 @@ function bindDashboardEvents() {
     }
   });
 
-  // Submit Add Fuel Log
+  // Submit Add Fuel Log (Transaction Cost -> Auto Liters)
   qs("#form-add-fuel")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     setModalError("modal-add-fuel", "");
@@ -404,15 +513,19 @@ function bindDashboardEvents() {
 
     try {
       const formData = new FormData(form);
+      const totalCost = Number(String(formData.get("total_cost") || "").replace(",", "."));
+      const pricePerLiter = Number(
+        String(formData.get("price_per_liter") || "").replace(",", ".")
+      );
+      const calculatedLiters = calculateLitersFromCost(totalCost, pricePerLiter);
+
       await createFuelLog({
         vehicle_id: vehicle.id,
         logged_at: String(formData.get("logged_at") || ""),
         odometer_km: Number(String(formData.get("odometer_km") || "").replace(",", ".")),
-        liters: Number(String(formData.get("liters") || "").replace(",", ".")),
-        price_per_liter: Number(String(formData.get("price_per_liter") || "").replace(",", ".")),
-        total_cost: formData.get("total_cost")
-          ? Number(String(formData.get("total_cost")).replace(",", "."))
-          : undefined,
+        liters: calculatedLiters,
+        price_per_liter: pricePerLiter,
+        total_cost: totalCost,
         fuel_brand: String(formData.get("fuel_brand") || "Pertamax"),
         station_name: String(formData.get("station_name") || ""),
         is_full_tank: formData.get("is_full_tank") === "on",
@@ -423,8 +536,12 @@ function bindDashboardEvents() {
       renderVehicleSelector();
       await loadActiveVehicleData();
       form.reset();
+      updateCalculatedLitersPreview();
       closeModal("modal-add-fuel");
-      showToast("Catatan pengisian BBM berhasil disimpan.", "success");
+      showToast(
+        `Catatan BBM tersimpan (${formatNumber(calculatedLiters, 3)} L).`,
+        "success"
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Gagal menyimpan BBM.";
       setModalError("modal-add-fuel", msg);
@@ -487,7 +604,15 @@ async function initDashboard() {
 
     bindDashboardEvents();
 
-    state.vehicles = await listVehicles();
+    const [vehicles, fuelPrices] = await Promise.all([listVehicles(), listFuelPrices()]);
+    state.vehicles = vehicles;
+    state.fuelPrices = fuelPrices;
+
+    renderFuelSelectOptions(
+      /** @type {HTMLSelectElement | null} */ (qs("#vehicle-fuel-type")),
+      "Pertamax"
+    );
+
     const savedId = localStorage.getItem(STORAGE_VEHICLE_KEY) || "";
     if (savedId && state.vehicles.some((v) => v.id === savedId)) {
       state.activeVehicleId = savedId;

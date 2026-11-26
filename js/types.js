@@ -1,4 +1,15 @@
 /**
+ * @typedef {Object} FuelPriceOption
+ * @property {string} [id]
+ * @property {string} brand
+ * @property {string} product_name
+ * @property {string} spec_label
+ * @property {number} price_per_liter
+ * @property {boolean} [is_active]
+ * @property {number} [sort_order]
+ */
+
+/**
  * @typedef {Object} Vehicle
  * @property {string} id
  * @property {string} user_id
