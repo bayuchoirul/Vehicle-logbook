@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   calculateFuelEfficiencySeries,
   calculateLitersFromCost,
+  calculateNextTaxDueDate,
   detectOdometerAnomaly,
   summarizeFuelBrandBreakdown,
   summarizeServiceReminders,
@@ -54,7 +55,7 @@ test("summarizeVehicleTelemetry & summarizeFuelBrandBreakdown aggregate totals",
   assert.equal(reminders[0].remainingKm, 425);
 });
 
-test("summarizeTaxReminders & detectOdometerAnomaly validate dates and odometer", () => {
+test("summarizeTaxReminders, calculateNextTaxDueDate & detectOdometerAnomaly", () => {
   const tax = summarizeTaxReminders(
     { id: "v1", name: "Vario", tax_due_date: "2026-12-10", plate_due_date: "2028-05-01" },
     "2026-11-27"
@@ -62,6 +63,10 @@ test("summarizeTaxReminders & detectOdometerAnomaly validate dates and odometer"
   assert.equal(tax[0].kind, "tax");
   assert.equal(tax[0].daysRemaining, 13);
   assert.equal(tax[0].urgent, true);
+
+  assert.equal(calculateNextTaxDueDate("2026-12-10", "tax"), "2027-12-10");
+  assert.equal(calculateNextTaxDueDate("2026-12-10", "plate"), "2031-12-10");
+  assert.equal(calculateNextTaxDueDate("2024-02-29", "tax"), "2025-02-28");
 
   const warning = detectOdometerAnomaly(
     [{ id: "f1", logged_at: "2026-11-10", odometer_km: 10500 }],

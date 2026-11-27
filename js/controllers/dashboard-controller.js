@@ -14,6 +14,7 @@ import {
   DEFAULT_SERVICE_INTERVALS_KM,
   MAINTENANCE_CATEGORIES,
   calculateLitersFromCost,
+  calculateNextTaxDueDate,
   formatDateID,
   formatIDR,
   formatLiters,
@@ -275,14 +276,23 @@ function renderServiceReminders(reminders) {
           ? "Jatuh tempo hari ini"
           : `${item.daysRemaining} hari lagi`;
       return `
-        <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5">
           <div>
             <p class="text-sm font-semibold text-slate-800">${escapeHtml(item.label)}</p>
             <p class="text-xs text-slate-500">Jatuh tempo: ${escapeHtml(formatDateID(item.dueDate))}</p>
           </div>
-          <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass}">
-            ${escapeHtml(statusText)}
-          </span>
+          <div class="flex items-center gap-2">
+            <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass}">
+              ${escapeHtml(statusText)}
+            </span>
+            <button
+              type="button"
+              data-pay-tax="${escapeHtml(item.kind)}"
+              class="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700 transition"
+            >
+              Sudah Bayar
+            </button>
+          </div>
         </div>
       `;
     })
@@ -652,6 +662,137 @@ function bindDashboardEvents() {
     }
   });
 
+  qs("#service-reminders-list")?.addEventListener("click", (event) => {
+    const target = /** @type {HTMLElement} */ (event.target);
+    const btn = target.closest("[data-pay-tax]");
+    if (!btn) return;
+
+    const kind = btn.getAttribute("data-pay-tax") === "plate" ? "plate" : "tax";
+    const vehicle = getActiveVehicle();
+    if (!vehicle) return;
+
+    setModalError("modal-pay-tax", "");
+    const todayStr = getTodayIsoDate();
+    const currentDue = kind === "plate" ? vehicle.plate_due_date : vehicle.tax_due_date;
+    const nextDue = calculateNextTaxDueDate(currentDue, kind, todayStr);
+
+    const titleEl = qs("#pay-tax-modal-title");
+    const summaryEl = qs("#pay-tax-summary");
+    const prevDueEl = qs("#pay-tax-prev-due");
+    const kindInput = /** @type {HTMLInputElement | null} */ (qs("#pay-tax-kind"));
+    const paidDateInput = /** @type {HTMLInputElement | null} */ (qs("#pay-tax-date"));
+    const nextDueInput = /** @type {HTMLInputElement | null} */ (qs("#pay-tax-next-due"));
+    const costInput = /** @type {HTMLInputElement | null} */ (qs("#pay-tax-cost"));
+    const recordCheckbox = /** @type {HTMLInputElement | null} */ (qs("#pay-tax-record-expense"));
+    const expenseFields = qs("#pay-tax-expense-fields");
+
+    if (titleEl) {
+      titleEl.textContent =
+        kind === "plate"
+          ? "Konfirmasi Perpanjangan Plat 5 Tahunan"
+          : "Konfirmasi Pembayaran Pajak STNK";
+    }
+    if (summaryEl) {
+      summaryEl.textContent = `${vehicle.name}${
+        vehicle.plate_number ? ` (${vehicle.plate_number})` : ""
+      }`;
+    }
+    if (prevDueEl) {
+      prevDueEl.textContent = currentDue
+        ? `Jatuh tempo sebelumnya: ${formatDateID(currentDue)} → Diperpanjang ke ${formatDateID(
+            nextDue
+          )}`
+        : `Jatuh tempo berikutnya ditetapkan ke ${formatDateID(nextDue)}`;
+    }
+    if (kindInput) kindInput.value = kind;
+    if (paidDateInput) paidDateInput.value = todayStr;
+    if (nextDueInput) nextDueInput.value = nextDue;
+    if (costInput) costInput.value = "";
+    if (recordCheckbox) recordCheckbox.checked = true;
+    expenseFields?.classList.remove("hidden");
+
+    openModal("modal-pay-tax");
+  });
+
+  qs("#pay-tax-record-expense")?.addEventListener("change", (event) => {
+    const checkbox = /** @type {HTMLInputElement} */ (event.target);
+    qs("#pay-tax-expense-fields")?.classList.toggle("hidden", !checkbox.checked);
+  });
+
+  qs("#form-pay-tax")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setModalError("modal-pay-tax", "");
+    const vehicle = getActiveVehicle();
+    if (!vehicle) return;
+
+    const form = /** @type {HTMLFormElement} */ (event.target);
+    const submitBtn = /** @type {HTMLButtonElement | null} */ (qs("#btn-submit-pay-tax"));
+    setButtonLoading(submitBtn, true);
+
+    try {
+      const formData = new FormData(form);
+      const kind = String(formData.get("kind") || "tax") === "plate" ? "plate" : "tax";
+      const paidAt = String(formData.get("paid_at") || getTodayIsoDate());
+      const nextDueDate = String(formData.get("next_due_date") || "").trim();
+      const recordExpense = formData.get("record_expense") === "on";
+      const totalCost = Number(String(formData.get("total_cost") || "0").replace(",", "."));
+      const channel = String(formData.get("channel") || "").trim();
+
+      if (!nextDueDate) {
+        throw new Error("Tanggal jatuh tempo baru wajib diisi.");
+      }
+
+      const vehicleUpdates =
+        kind === "plate"
+          ? { plate_due_date: nextDueDate }
+          : { tax_due_date: nextDueDate };
+
+      const updatedVehicle = await updateVehicle(vehicle.id, vehicleUpdates);
+      state.vehicles = state.vehicles.map((item) =>
+        item.id === vehicle.id ? { ...item, ...updatedVehicle } : item
+      );
+
+      if (recordExpense && totalCost > 0) {
+        const telemetry = summarizeVehicleTelemetry(
+          updatedVehicle,
+          state.fuelLogs,
+          state.maintenanceLogs
+        );
+        const label =
+          kind === "plate"
+            ? "Perpanjangan STNK & Ganti Plat 5 Tahunan"
+            : "Pembayaran Pajak Tahunan (STNK)";
+
+        await createMaintenanceLog({
+          vehicle_id: vehicle.id,
+          logged_at: paidAt,
+          odometer_km: telemetry.currentOdometer,
+          category: "other",
+          title: label,
+          workshop_name: channel || "Samsat / SIGNAL",
+          total_cost: totalCost,
+          next_due_km: null,
+          notes: `Jatuh tempo diperpanjang s.d. ${formatDateID(nextDueDate)}`
+        });
+      }
+
+      closeModal("modal-pay-tax");
+      await loadActiveVehicleData();
+      showToast(
+        kind === "plate"
+          ? `Perpanjangan plat 5 tahunan dicatat s.d. ${formatDateID(nextDueDate)}.`
+          : `Pajak STNK lunas! Jatuh tempo baru: ${formatDateID(nextDueDate)}.`,
+        "success"
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Gagal menyimpan pembayaran pajak.";
+      setModalError("modal-pay-tax", msg);
+      showToast(msg, "error");
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+
   qs("#form-add-vehicle")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     setModalError("modal-add-vehicle", "");
@@ -813,12 +954,11 @@ function handleUrlAuthErrors() {
   const errorCode = params.get("error_code") || "";
   const errorDesc = params.get("error_description") || "";
 
-  // Bersihkan fragment #error=... dari address bar
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
 
   if (errorCode === "otp_expired" || errorDesc.toLowerCase().includes("expired")) {
     showToast(
-      "Tautan verifikasi/reset email sudah kedaluwarsa atau telah digunakan. Silakan minta tautan baru jika diperlukan.",
+      "Tautan verifikasi/reset email sudah kedaluwarsa atau telah digunakan.",
       "error"
     );
   } else if (errorDesc) {
@@ -827,6 +967,7 @@ function handleUrlAuthErrors() {
 }
 
 async function initDashboard() {
+  handleUrlAuthErrors();
   try {
     const user = await requireAuth("./login.html");
     const userEmailEl = qs("#user-email");
@@ -852,6 +993,5 @@ async function initDashboard() {
     showToast(err instanceof Error ? err.message : "Gagal memuat dashboard.", "error");
   }
 }
-
 
 document.addEventListener("DOMContentLoaded", initDashboard);
