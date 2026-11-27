@@ -1,95 +1,66 @@
-import { getSupabaseClient, isSupabaseConfigured } from "./supabase-client.js";
+import { getSupabaseClient } from "../supabase-client.js";
 
 /**
- * Retrieves the active Supabase session, or null if not signed in.
- * @returns {Promise<import("@supabase/supabase-js").Session | null>}
+ * Retrieves the currently authenticated Supabase user, or null if not signed in.
+ * @returns {Promise<import("@supabase/supabase-js").User | null>}
  */
-export async function getSession() {
-  if (!isSupabaseConfigured()) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-  return data.session;
+export async function getCurrentUser() {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data?.user) {
+    return null;
+  }
+  return data.user;
 }
 
 /**
- * Ensures the user is authenticated; otherwise redirects to /login.html.
- * @param {string} [loginPath="./login.html"]
+ * Ensures a user session exists; redirects to loginUrl and throws AUTH_REDIRECT otherwise.
+ * @param {string} [loginUrl="./login.html"]
  * @returns {Promise<import("@supabase/supabase-js").User>}
  */
-export async function requireAuth(loginPath = "./login.html") {
-  const session = await getSession();
-  if (!session || !session.user) {
-    const target = new URL(loginPath, window.location.href);
-    window.location.replace(target.toString());
+export async function requireAuth(loginUrl = "./login.html") {
+  const user = await getCurrentUser();
+  if (!user) {
+    window.location.replace(loginUrl);
     throw new Error("AUTH_REDIRECT");
   }
-  return session.user;
+  return user;
 }
 
 /**
- * Redirects already-authenticated users away from the login screen.
- * @param {string} [dashboardPath="./index.html"]
+ * Redirects already authenticated users away from the login page to the dashboard.
+ * @param {string} [dashboardUrl="./"]
  */
-export async function redirectIfAuthenticated(dashboardPath = "./index.html") {
-  const session = await getSession();
-  if (session && session.user) {
-    const target = new URL(dashboardPath, window.location.href);
-    window.location.replace(target.toString());
+export async function redirectIfAuthenticated(dashboardUrl = "./") {
+  const user = await getCurrentUser();
+  if (user) {
+    window.location.replace(dashboardUrl);
   }
 }
 
 /**
- * Signs in an existing user with email & password.
+ * Signs in with email and password via Supabase Auth.
  * @param {string} email
  * @param {string} password
  */
-export async function signInWithPassword(email, password) {
-  const supabase = getSupabaseClient();
-  const cleanEmail = String(email || "").trim();
-  if (!cleanEmail || !password) {
-    throw new Error("Email dan kata sandi wajib diisi.");
-  }
+export async function signInWithEmail(email, password) {
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: cleanEmail,
-    password
+    email: String(email || "").trim(),
+    password: String(password || "")
   });
-  if (error) throw error;
-  return data;
+  if (error) {
+    throw new Error(error.message || "Gagal login. Periksa email dan kata sandi.");
+  }
+  return data.user;
 }
 
 /**
- * Registers a new user account with email & password.
- * @param {string} email
- * @param {string} password
+ * Signs out the active user and redirects to loginUrl.
+ * @param {string} [loginUrl="./login.html"]
  */
-export async function signUpWithPassword(email, password) {
-  const supabase = getSupabaseClient();
-  const cleanEmail = String(email || "").trim();
-  if (!cleanEmail || !password) {
-    throw new Error("Email dan kata sandi wajib diisi.");
-  }
-  if (password.length < 6) {
-    throw new Error("Kata sandi minimal 6 karakter.");
-  }
-  const { data, error } = await supabase.auth.signUp({
-    email: cleanEmail,
-    password
-  });
-  if (error) throw error;
-  return data;
-}
-
-/**
- * Signs out the current user and redirects to login page.
- * @param {string} [loginPath="./login.html"]
- */
-export async function signOut(loginPath = "./login.html") {
-  if (isSupabaseConfigured()) {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-  }
-  const target = new URL(loginPath, window.location.href);
-  window.location.replace(target.toString());
+export async function signOut(loginUrl = "./login.html") {
+  const supabase = await getSupabaseClient();
+  await supabase.auth.signOut();
+  window.location.replace(loginUrl);
 }
