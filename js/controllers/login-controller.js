@@ -276,6 +276,21 @@ async function initLogin() {
 
   const hash = window.location.hash || "";
   const search = window.location.search || "";
+  if (hash.includes("error=")) {
+    const params = new URLSearchParams(hash.replace(/^#/, ""));
+    const code = params.get("error_code") || "";
+    const desc = params.get("error_description") || "";
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+
+    if (code === "otp_expired" || desc.toLowerCase().includes("expired")) {
+      showBanner(
+        "Tautan verifikasi atau reset kata sandi sudah kedaluwarsa. Jika akun sudah aktif, langsung masuk di bawah; jika belum, kirim ulang tautan reset.",
+        "error"
+      );
+    } else if (desc) {
+      showBanner(decodeURIComponent(desc.replace(/\+/g, " ")), "error");
+    }
+  }
   if (hash.includes("type=recovery") || search.includes("type=recovery")) {
     setAuthMode("recovery");
   } else {

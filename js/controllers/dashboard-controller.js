@@ -805,6 +805,27 @@ function bindDashboardEvents() {
   });
 }
 
+function handleUrlAuthErrors() {
+  const hash = window.location.hash || "";
+  if (!hash.includes("error=")) return;
+
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const errorCode = params.get("error_code") || "";
+  const errorDesc = params.get("error_description") || "";
+
+  // Bersihkan fragment #error=... dari address bar
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+
+  if (errorCode === "otp_expired" || errorDesc.toLowerCase().includes("expired")) {
+    showToast(
+      "Tautan verifikasi/reset email sudah kedaluwarsa atau telah digunakan. Silakan minta tautan baru jika diperlukan.",
+      "error"
+    );
+  } else if (errorDesc) {
+    showToast(decodeURIComponent(errorDesc.replace(/\+/g, " ")), "error");
+  }
+}
+
 async function initDashboard() {
   try {
     const user = await requireAuth("./login.html");
@@ -831,5 +852,6 @@ async function initDashboard() {
     showToast(err instanceof Error ? err.message : "Gagal memuat dashboard.", "error");
   }
 }
+
 
 document.addEventListener("DOMContentLoaded", initDashboard);
