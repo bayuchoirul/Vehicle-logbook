@@ -1,485 +1,447 @@
-<!DOCTYPE html>
-<html lang="id" class="h-full bg-slate-50">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0284c7" />
-  <title>Dashboard — Vehicle Logbook</title>
-  <link rel="manifest" href="./manifest.webmanifest" crossorigin="use-credentials" />
-  <link rel="stylesheet" href="./css/output.css" />
-</head>
-<body class="min-h-full bg-slate-50 text-slate-900">
-  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-      <div class="flex items-center gap-3">
-        <a href="./index.html" class="text-base font-bold tracking-tight text-slate-900">
-          Vehicle Logbook
-        </a>
-        <nav class="flex items-center gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold">
-          <a href="./index.html" class="rounded-lg bg-white px-3 py-1.5 text-slate-900 shadow-xs">
-            Dashboard
-          </a>
-          <a href="./logs.html" class="rounded-lg px-3 py-1.5 text-slate-600 hover:text-slate-900">
-            Riwayat Log
-          </a>
-        </nav>
-      </div>
+/**
+ * Domain calculations, formatting, and telemetry helpers for Vehicle Logbook.
+ */
 
-      <div class="flex items-center gap-2.5">
-        <span id="user-email" class="hidden text-xs text-slate-500 sm:inline"></span>
-        <button
-          type="button"
-          id="btn-signout"
-          class="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-        >
-          Keluar
-        </button>
-      </div>
-    </div>
-  </header>
+export const MAINTENANCE_CATEGORIES = {
+  oil_change: "Ganti Oli Mesin / Gardan",
+  cvt_belt: "Servis CVT / V-Belt / Roller",
+  tires: "Ban & Tekanan Angin",
+  brakes: "Kampas & Minyak Rem",
+  battery: "Aki & Kelistrikan",
+  tune_up: "Tune Up & Injeksi",
+  other: "Lainnya"
+};
 
-  <main class="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
-    <!-- Vehicle Selector Bar -->
-    <section class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between">
-      <div class="flex flex-wrap items-center gap-2.5">
-        <select
-          id="vehicle-selector"
-          aria-label="Pilih kendaraan"
-          class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-900 focus:border-sky-500 focus:outline-none"
-        >
-          <option value="">Memuat kendaraan...</option>
-        </select>
-        <span
-          id="vehicle-meta-badge"
-          class="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700"
-        >
-          —
-        </span>
-        <button
-          type="button"
-          id="btn-open-edit-vehicle-modal"
-          class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-        >
-          Edit Profil
-        </button>
-        <button
-          type="button"
-          id="btn-open-vehicle-modal"
-          class="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-        >
-          + Kendaraan
-        </button>
-      </div>
+/**
+ * @type {Record<string, number>}
+ */
+export const DEFAULT_SERVICE_INTERVALS_KM = {
+  oil_change: 2000,
+  cvt_belt: 8000,
+  tires: 15000,
+  brakes: 10000,
+  battery: 20000,
+  tune_up: 4000
+};
 
-      <div class="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          id="btn-open-fuel-modal"
-          class="rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-sky-700"
-        >
-          + Isi BBM
-        </button>
-        <button
-          type="button"
-          id="btn-open-maint-modal"
-          class="rounded-xl bg-amber-500 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-amber-600"
-        >
-          + Catat Servis
-        </button>
-      </div>
-    </section>
+/**
+ * @param {number} amount
+ * @returns {string}
+ */
+export function formatIDR(amount) {
+  const num = Number(amount);
+  if (!Number.isFinite(num)) return "Rp 0";
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0
+  }).format(Math.round(num));
+}
 
-    <!-- Empty State -->
-    <section
-      id="empty-vehicle-banner"
-      class="hidden rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"
-    >
-      <h2 class="text-lg font-bold text-slate-900">Belum Ada Kendaraan Terdaftar</h2>
-      <p class="mt-1 text-sm text-slate-600">
-        Tambahkan motor atau mobil pertama Anda untuk mulai memantau konsumsi BBM dan jadwal perawatan.
-      </p>
-      <button
-        type="button"
-        id="btn-empty-add-vehicle"
-        class="mt-4 rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-700"
-      >
-        + Tambah Kendaraan Pertama
-      </button>
-    </section>
+/**
+ * @param {number} value
+ * @param {number} [decimals=1]
+ * @returns {string}
+ */
+export function formatNumber(value, decimals = 1) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "—";
+  return new Intl.NumberFormat("id-ID", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  }).format(num);
+}
 
-    <!-- Main Dashboard -->
-    <div id="dashboard-main" class="space-y-6">
-      <!-- KPI Grid -->
-      <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <p class="text-xs font-medium text-slate-500">Odometer Terkini</p>
-          <p id="kpi-odometer" class="mt-1 text-2xl font-bold text-slate-900">0 km</p>
-          <p id="kpi-distance" class="mt-1 text-xs text-slate-500">Jarak tercatat: 0 km</p>
-        </div>
+/**
+ * @param {number} liters
+ * @returns {string}
+ */
+export function formatLiters(liters) {
+  const num = Number(liters);
+  if (!Number.isFinite(num) || num < 0) return "0,00 L";
+  return `${formatNumber(num, 2)} L`;
+}
 
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <p class="text-xs font-medium text-slate-500">Efisiensi Rata-Rata</p>
-          <p id="kpi-avg-kmpl" class="mt-1 text-2xl font-bold text-emerald-700">— km/L</p>
-          <p id="kpi-last-kmpl" class="mt-1 text-xs text-slate-500">Butuh min. 2x full tank</p>
-        </div>
+/**
+ * @param {string} isoDate
+ * @returns {string}
+ */
+export function formatDateID(isoDate) {
+  if (!isoDate) return "—";
+  const parsed = new Date(`${String(isoDate).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return String(isoDate);
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(parsed);
+}
 
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <p class="text-xs font-medium text-slate-500">Total Pengeluaran</p>
-          <p id="kpi-total-cost" class="mt-1 text-2xl font-bold text-slate-900">Rp 0</p>
-          <p id="kpi-cost-per-km" class="mt-1 text-xs text-slate-500">Rp — / km</p>
-        </div>
+/**
+ * @param {number} totalCost
+ * @param {number} pricePerLiter
+ * @returns {number}
+ */
+export function calculateLitersFromCost(totalCost, pricePerLiter) {
+  const cost = Number(totalCost);
+  const price = Number(pricePerLiter);
+  if (!Number.isFinite(cost) || !Number.isFinite(price) || cost <= 0 || price <= 0) {
+    return 0;
+  }
+  return Math.round((cost / price) * 1000) / 1000;
+}
 
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <p class="text-xs font-medium text-slate-500">Rincian Biaya</p>
-          <p class="mt-1 text-xs text-slate-600">
-            BBM: <strong id="kpi-fuel-cost" class="text-slate-900">Rp 0</strong>
-          </p>
-          <p class="mt-1 text-xs text-slate-600">
-            Servis: <strong id="kpi-maint-cost" class="text-slate-900">Rp 0</strong>
-          </p>
-          <p id="kpi-tank-range" class="mt-1 text-[11px] font-medium text-sky-700">
-            Estimasi tangki: — km
-          </p>
-        </div>
-      </section>
+/**
+ * @param {import("../types.js").FuelLog[]} fuelLogs
+ * @returns {Array<{id: string, logged_at: string, odometer_km: number, distance_km: number, liters_used: number, km_per_liter: number}>}
+ */
+export function calculateFuelEfficiencySeries(fuelLogs) {
+  if (!Array.isArray(fuelLogs) || fuelLogs.length < 2) return [];
 
-      <!-- Analytics Grid -->
-      <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-          <h2 class="text-sm font-bold text-slate-900">Pengingat Servis &amp; Pajak STNK</h2>
-          <div id="service-reminders-list" class="mt-3 space-y-2.5"></div>
-        </div>
+  const sorted = [...fuelLogs].sort((a, b) => {
+    const dateDiff = String(a.logged_at).localeCompare(String(b.logged_at));
+    if (dateDiff !== 0) return dateDiff;
+    return Number(a.odometer_km) - Number(b.odometer_km);
+  });
 
-        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-          <h2 class="text-sm font-bold text-slate-900">Tren Efisiensi BBM (Full-to-Full)</h2>
-          <div id="efficiency-trend-chart" class="mt-3 space-y-2.5"></div>
-        </div>
+  /** @type {Array<{id: string, logged_at: string, odometer_km: number, distance_km: number, liters_used: number, km_per_liter: number}>} */
+  const points = [];
+  let anchorOdo = null;
+  let pendingLiters = 0;
 
-        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-          <h2 class="text-sm font-bold text-slate-900">Pengeluaran 6 Bulan Terakhir</h2>
-          <div id="monthly-spend-chart" class="mt-3 space-y-3"></div>
-        </div>
+  for (const log of sorted) {
+    const odo = Number(log.odometer_km);
+    const liters = Number(log.liters);
+    if (!Number.isFinite(odo) || !Number.isFinite(liters) || liters <= 0) continue;
 
-        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-          <h2 class="text-sm font-bold text-slate-900">Distribusi Jenis BBM</h2>
-          <div id="fuel-brand-breakdown" class="mt-3 space-y-2.5"></div>
-        </div>
-      </section>
+    if (anchorOdo === null) {
+      if (log.is_full_tank) {
+        anchorOdo = odo;
+        pendingLiters = 0;
+      }
+      continue;
+    }
 
-      <!-- Recent Activity -->
-      <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-        <div class="flex items-center justify-between">
-          <h2 class="text-sm font-bold text-slate-900">Aktivitas Terbaru</h2>
-          <a href="./logs.html" class="text-xs font-semibold text-sky-600 hover:text-sky-700">
-            Lihat Semua &rarr;
-          </a>
-        </div>
-        <div id="recent-activity-list" class="mt-2 divide-y divide-slate-100"></div>
-      </section>
-    </div>
-  </main>
+    pendingLiters += liters;
 
-  <!-- Modal: Tambah Kendaraan -->
-  <div
-    id="modal-add-vehicle"
-    data-modal-backdrop
-    class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 p-4"
-  >
-    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-      <div class="flex items-center justify-between">
-        <h3 class="text-base font-bold text-slate-900">Tambah Kendaraan</h3>
-        <button type="button" data-close-modal="modal-add-vehicle" class="text-slate-400 hover:text-slate-700">&times;</button>
-      </div>
-      <div data-modal-error class="mt-3 hidden rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700"></div>
-      <form id="form-add-vehicle" class="mt-4 space-y-3">
-        <div>
-          <label class="mb-1 block text-xs font-medium text-slate-700">Nama Kendaraan *</label>
-          <input name="name" required placeholder="Contoh: Honda Vario 110 eSP" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Nomor Polisi</label>
-            <input name="plate_number" placeholder="B 1234 XYZ" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">BBM Utama</label>
-            <select id="vehicle-fuel-type" name="fuel_type" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></select>
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Kapasitas Tangki (L)</label>
-            <input name="tank_capacity_liters" type="number" step="0.1" value="3.7" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Odometer Awal (km)</label>
-            <input name="initial_odometer_km" type="number" step="0.1" value="0" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Jatuh Tempo Pajak STNK</label>
-            <input name="tax_due_date" type="date" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Jatuh Tempo Plat 5 Thn</label>
-            <input name="plate_due_date" type="date" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div class="flex justify-end gap-2 pt-2">
-          <button type="button" data-close-modal="modal-add-vehicle" class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700">Batal</button>
-          <button type="submit" id="btn-submit-vehicle" class="rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700">Simpan</button>
-        </div>
-      </form>
-    </div>
-  </div>
+    if (log.is_full_tank) {
+      const distance = odo - anchorOdo;
+      if (distance > 0 && pendingLiters > 0) {
+        points.push({
+          id: log.id,
+          logged_at: log.logged_at,
+          odometer_km: odo,
+          distance_km: Number(distance.toFixed(1)),
+          liters_used: Number(pendingLiters.toFixed(3)),
+          km_per_liter: Number((distance / pendingLiters).toFixed(2))
+        });
+      }
+      anchorOdo = odo;
+      pendingLiters = 0;
+    }
+  }
 
-  <!-- Modal: Edit Kendaraan -->
-  <div
-    id="modal-edit-vehicle"
-    data-modal-backdrop
-    class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 p-4"
-  >
-    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-      <div class="flex items-center justify-between">
-        <h3 class="text-base font-bold text-slate-900">Edit Profil Kendaraan</h3>
-        <button type="button" data-close-modal="modal-edit-vehicle" class="text-slate-400 hover:text-slate-700">&times;</button>
-      </div>
-      <div data-modal-error class="mt-3 hidden rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700"></div>
-      <form id="form-edit-vehicle" class="mt-4 space-y-3">
-        <div>
-          <label class="mb-1 block text-xs font-medium text-slate-700">Nama Kendaraan *</label>
-          <input id="edit-vehicle-name" name="name" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Nomor Polisi</label>
-            <input id="edit-vehicle-plate" name="plate_number" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Merek / Tipe</label>
-            <input id="edit-vehicle-brand-model" name="brand_model" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">BBM Utama</label>
-            <select id="edit-vehicle-fuel-type" name="fuel_type" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></select>
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Kapasitas Tangki (L)</label>
-            <input id="edit-vehicle-tank" name="tank_capacity_liters" type="number" step="0.1" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Jatuh Tempo Pajak STNK</label>
-            <input id="edit-vehicle-tax-due" name="tax_due_date" type="date" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Jatuh Tempo Plat 5 Thn</label>
-            <input id="edit-vehicle-plate-due" name="plate_due_date" type="date" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div class="flex justify-end gap-2 pt-2">
-          <button type="button" data-close-modal="modal-edit-vehicle" class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700">Batal</button>
-          <button type="submit" id="btn-submit-edit-vehicle" class="rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700">Simpan Perubahan</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  return points;
+}
 
-  <!-- Modal: Tambah BBM -->
-  <div
-    id="modal-add-fuel"
-    data-modal-backdrop
-    class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 p-4"
-  >
-    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-      <div class="flex items-center justify-between">
-        <h3 class="text-base font-bold text-slate-900">Catat Pengisian BBM</h3>
-        <button type="button" data-close-modal="modal-add-fuel" class="text-slate-400 hover:text-slate-700">&times;</button>
-      </div>
-      <div data-modal-error class="mt-3 hidden rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700"></div>
-      <form id="form-add-fuel" class="mt-4 space-y-3">
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Tanggal *</label>
-            <input id="fuel-date" name="logged_at" type="date" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Odometer (km) *</label>
-            <input id="fuel-odometer" name="odometer_km" type="number" step="0.1" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Produk BBM *</label>
-            <select id="fuel-brand" name="fuel_brand" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></select>
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Harga / Liter (Rp) *</label>
-            <input id="fuel-price" name="price_per_liter" type="number" step="1" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div>
-          <div class="mb-1 flex items-center justify-between">
-            <label class="text-xs font-medium text-slate-700">Total Bayar (Rp) *</label>
-            <span class="text-xs font-semibold text-slate-500">
-              Volume: <strong id="fuel-liters-preview" class="text-slate-400">0,00 L</strong>
-            </span>
-          </div>
-          <input id="fuel-total" name="total_cost" type="number" step="1" required placeholder="35000" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          <div class="mt-1.5 flex flex-wrap gap-1.5">
-            <button type="button" data-fuel-preset="20000" class="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200">20rb</button>
-            <button type="button" data-fuel-preset="30000" class="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200">30rb</button>
-            <button type="button" data-fuel-preset="35000" class="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200">35rb</button>
-            <button type="button" data-fuel-preset="40000" class="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-200">40rb</button>
-          </div>
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-medium text-slate-700">Nama SPBU (Opsional)</label>
-          <input id="fuel-station" name="station_name" placeholder="Pertamina Cinere" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-        </div>
-        <label class="flex items-center gap-2 text-xs font-medium text-slate-700">
-          <input type="checkbox" name="is_full_tank" checked class="rounded border-slate-300 text-sky-600" />
-          Isi penuh (Full Tank) untuk menghitung km/L
-        </label>
-        <div class="flex justify-end gap-2 pt-2">
-          <button type="button" data-close-modal="modal-add-fuel" class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700">Batal</button>
-          <button type="submit" id="btn-submit-fuel" class="rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-700">Simpan BBM</button>
-        </div>
-      </form>
-    </div>
-  </div>
+/**
+ * @param {import("../types.js").Vehicle | null} vehicle
+ * @param {import("../types.js").FuelLog[]} fuelLogs
+ * @param {import("../types.js").MaintenanceLog[]} maintenanceLogs
+ */
+export function summarizeVehicleTelemetry(vehicle, fuelLogs, maintenanceLogs) {
+  const initialOdo = Number(vehicle?.initial_odometer_km ?? 0);
+  const allOdos = [
+    initialOdo,
+    ...fuelLogs.map((f) => Number(f.odometer_km) || 0),
+    ...maintenanceLogs.map((m) => Number(m.odometer_km) || 0)
+  ];
 
-  <!-- Modal: Tambah Servis -->
-  <div
-    id="modal-add-maint"
-    data-modal-backdrop
-    class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 p-4"
-  >
-    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-      <div class="flex items-center justify-between">
-        <h3 class="text-base font-bold text-slate-900">Catat Servis &amp; Perawatan</h3>
-        <button type="button" data-close-modal="modal-add-maint" class="text-slate-400 hover:text-slate-700">&times;</button>
-      </div>
-      <div data-modal-error class="mt-3 hidden rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700"></div>
-      <form id="form-add-maint" class="mt-4 space-y-3">
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Tanggal *</label>
-            <input id="maint-date" name="logged_at" type="date" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Odometer (km) *</label>
-            <input id="maint-odometer" name="odometer_km" type="number" step="0.1" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Kategori *</label>
-            <select id="maint-category" name="category" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm">
-              <option value="oil_change">Ganti Oli Mesin / Gardan</option>
-              <option value="cvt_belt">Servis CVT / V-Belt / Roller</option>
-              <option value="tires">Ban &amp; Tekanan Angin</option>
-              <option value="brakes">Kampas &amp; Minyak Rem</option>
-              <option value="battery">Aki &amp; Kelistrikan</option>
-              <option value="tune_up">Tune Up &amp; Injeksi</option>
-              <option value="other">Lainnya</option>
-            </select>
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Biaya (Rp) *</label>
-            <input name="total_cost" type="number" step="1" required placeholder="65000" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-medium text-slate-700">Pekerjaan / Komponen *</label>
-          <input name="title" required placeholder="Contoh: Ganti Oli MPX2 + Oli Gardan" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-medium text-slate-700">Bengkel (Opsional)</label>
-          <input id="maint-workshop" name="workshop_name" placeholder="AHASS / Sukoharjo Motor" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-medium text-slate-700">Target Servis Berikutnya (km)</label>
-          <input id="maint-next-due" name="next_due_km" type="number" step="1" placeholder="Opsional" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          <div id="maint-interval-hint" class="mt-1.5 hidden items-center justify-between rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
-            <span id="maint-interval-label"></span>
-            <button type="button" id="btn-apply-maint-interval" class="font-bold underline">Terapkan</button>
-          </div>
-        </div>
-        <div class="flex justify-end gap-2 pt-2">
-          <button type="button" data-close-modal="modal-add-maint" class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700">Batal</button>
-          <button type="submit" id="btn-submit-maint" class="rounded-xl bg-amber-500 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-600">Simpan Servis</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  const currentOdometer = allOdos.length ? Math.max(...allOdos) : 0;
+  const trackedDistance = Math.max(0, currentOdometer - initialOdo);
 
-  <!-- Modal: Konfirmasi Pembayaran Pajak STNK / Plat 5 Tahunan -->
-  <div
-    id="modal-pay-tax"
-    data-modal-backdrop
-    class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 p-4"
-  >
-    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-      <div class="flex items-center justify-between">
-        <h3 id="pay-tax-modal-title" class="text-base font-bold text-slate-900">
-          Konfirmasi Pembayaran Pajak
-        </h3>
-        <button type="button" data-close-modal="modal-pay-tax" class="text-slate-400 hover:text-slate-700">&times;</button>
-      </div>
-      <div data-modal-error class="mt-3 hidden rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700"></div>
+  const totalFuelCost = fuelLogs.reduce((acc, f) => acc + (Number(f.total_cost) || 0), 0);
+  const totalFuelLiters = fuelLogs.reduce((acc, f) => acc + (Number(f.liters) || 0), 0);
+  const totalMaintenanceCost = maintenanceLogs.reduce(
+    (acc, m) => acc + (Number(m.total_cost) || 0),
+    0
+  );
+  const totalSpend = totalFuelCost + totalMaintenanceCost;
 
-      <form id="form-pay-tax" class="mt-4 space-y-3.5">
-        <input type="hidden" id="pay-tax-kind" name="kind" value="tax" />
+  const efficiencySeries = calculateFuelEfficiencySeries(fuelLogs);
+  const totalEffDistance = efficiencySeries.reduce((acc, p) => acc + p.distance_km, 0);
+  const totalEffLiters = efficiencySeries.reduce((acc, p) => acc + p.liters_used, 0);
 
-        <div class="rounded-xl border border-sky-200 bg-sky-50/80 p-3 text-xs text-sky-900 space-y-1">
-          <p id="pay-tax-summary" class="font-semibold"></p>
-          <p id="pay-tax-prev-due" class="text-sky-700"></p>
-        </div>
+  const avgKmPerLiter =
+    totalEffLiters > 0 ? Number((totalEffDistance / totalEffLiters).toFixed(2)) : null;
+  const lastKmPerLiter =
+    efficiencySeries.length > 0
+      ? efficiencySeries[efficiencySeries.length - 1].km_per_liter
+      : null;
 
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Tanggal Bayar *</label>
-            <input id="pay-tax-date" name="paid_at" type="date" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Jatuh Tempo Baru *</label>
-            <input id="pay-tax-next-due" name="next_due_date" type="date" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
+  const costPerKm =
+    trackedDistance > 0 ? Math.round(totalSpend / trackedDistance) : null;
 
-        <label class="flex items-center gap-2 text-xs font-medium text-slate-700">
-          <input id="pay-tax-record-expense" type="checkbox" name="record_expense" checked class="rounded border-slate-300 text-emerald-600" />
-          Catat biaya pajak ke riwayat pengeluaran kendaraan
-        </label>
+  return {
+    currentOdometer,
+    trackedDistance,
+    totalFuelCost,
+    totalFuelLiters: Number(totalFuelLiters.toFixed(2)),
+    totalMaintenanceCost,
+    totalSpend,
+    avgKmPerLiter,
+    lastKmPerLiter,
+    costPerKm,
+    efficiencySeries
+  };
+}
 
-        <div id="pay-tax-expense-fields" class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Total Biaya Pajak (Rp)</label>
-            <input id="pay-tax-cost" name="total_cost" type="number" step="1" placeholder="235000" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-700">Kanal / Samsat</label>
-            <input id="pay-tax-channel" name="channel" placeholder="SIGNAL / Samsat Depok" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-        </div>
+/**
+ * @param {import("../types.js").MaintenanceLog[]} maintenanceLogs
+ * @param {number} currentOdometer
+ * @param {number} [warningThresholdKm=500]
+ */
+export function summarizeServiceReminders(
+  maintenanceLogs,
+  currentOdometer,
+  warningThresholdKm = 500
+) {
+  /** @type {Map<string, import("../types.js").MaintenanceLog>} */
+  const latestByCategory = new Map();
 
-        <div class="flex justify-end gap-2 pt-2">
-          <button type="button" data-close-modal="modal-pay-tax" class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700">
-            Batal
-          </button>
-          <button type="submit" id="btn-submit-pay-tax" class="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700">
-            Simpan Pembayaran
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
+  for (const log of maintenanceLogs) {
+    const existing = latestByCategory.get(log.category);
+    if (!existing || Number(log.odometer_km) >= Number(existing.odometer_km)) {
+      latestByCategory.set(log.category, log);
+    }
+  }
 
-  <script type="module" src="./js/controllers/dashboard-controller.js"></script>
-</body>
-</html>
+  /** @type {Array<{category: string, categoryLabel: string, title: string, nextDueKm: number, remainingKm: number, overdue: boolean}>} */
+  const reminders = [];
+
+  for (const log of latestByCategory.values()) {
+    const nextDue = Number(log.next_due_km);
+    if (!Number.isFinite(nextDue) || nextDue <= 0) continue;
+
+    const remainingKm = Math.round(nextDue - currentOdometer);
+    if (remainingKm <= warningThresholdKm) {
+      reminders.push({
+        category: log.category,
+        categoryLabel: MAINTENANCE_CATEGORIES[log.category] || log.category,
+        title: log.title,
+        nextDueKm: nextDue,
+        remainingKm,
+        overdue: remainingKm < 0
+      });
+    }
+  }
+
+  return reminders.sort((a, b) => a.remainingKm - b.remainingKm);
+}
+
+/**
+ * @param {import("../types.js").FuelLog[]} fuelLogs
+ * @param {import("../types.js").MaintenanceLog[]} maintenanceLogs
+ * @param {number} [months=6]
+ */
+export function summarizeMonthlySpend(fuelLogs, maintenanceLogs, months = 6) {
+  const now = new Date();
+  /** @type {Array<{key: string, label: string, fuel: number, maintenance: number, total: number}>} */
+  const buckets = [];
+
+  for (let i = months - 1; i >= 0; i -= 1) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = new Intl.DateTimeFormat("id-ID", {
+      month: "short",
+      year: "2-digit"
+    }).format(d);
+    buckets.push({ key, label, fuel: 0, maintenance: 0, total: 0 });
+  }
+
+  const bucketMap = new Map(buckets.map((b) => [b.key, b]));
+
+  for (const f of fuelLogs) {
+    const key = String(f.logged_at || "").slice(0, 7);
+    const bucket = bucketMap.get(key);
+    if (bucket) {
+      bucket.fuel += Number(f.total_cost) || 0;
+      bucket.total = bucket.fuel + bucket.maintenance;
+    }
+  }
+
+  for (const m of maintenanceLogs) {
+    const key = String(m.logged_at || "").slice(0, 7);
+    const bucket = bucketMap.get(key);
+    if (bucket) {
+      bucket.maintenance += Number(m.total_cost) || 0;
+      bucket.total = bucket.fuel + bucket.maintenance;
+    }
+  }
+
+  return buckets;
+}
+
+/**
+ * @param {Array<{id?: string, logged_at: string, odometer_km: number | string}>} logs
+ * @param {number} targetOdometer
+ * @param {string} targetDate
+ * @param {string | null} [excludeId=null]
+ * @returns {string | null}
+ */
+export function detectOdometerAnomaly(logs, targetOdometer, targetDate, excludeId = null) {
+  const odo = Number(targetOdometer);
+  if (!Array.isArray(logs) || !Number.isFinite(odo) || odo < 0 || !targetDate) {
+    return null;
+  }
+
+  const candidates = logs.filter((item) => item && item.id !== excludeId);
+  if (!candidates.length) return null;
+
+  const sorted = [...candidates].sort((a, b) => {
+    const dateCmp = String(a.logged_at).localeCompare(String(b.logged_at));
+    if (dateCmp !== 0) return dateCmp;
+    return Number(a.odometer_km) - Number(b.odometer_km);
+  });
+
+  const earlier = sorted.filter((item) => String(item.logged_at) <= String(targetDate));
+  const later = sorted.filter((item) => String(item.logged_at) > String(targetDate));
+
+  if (earlier.length > 0) {
+    const prevMaxOdo = Math.max(...earlier.map((item) => Number(item.odometer_km) || 0));
+    if (odo < prevMaxOdo) {
+      return `Odometer (${formatNumber(odo, 0)} km) lebih kecil dari catatan sebelumnya (${formatNumber(
+        prevMaxOdo,
+        0
+      )} km). Pastikan angka sudah sesuai.`;
+    }
+  }
+
+  if (later.length > 0) {
+    const nextMinOdo = Math.min(...later.map((item) => Number(item.odometer_km) || Infinity));
+    if (Number.isFinite(nextMinOdo) && odo > nextMinOdo) {
+      return `Odometer (${formatNumber(odo, 0)} km) lebih besar dari catatan setelahnya (${formatNumber(
+        nextMinOdo,
+        0
+      )} km). Pastikan urutan tanggal dan odometer benar.`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * @param {import("../types.js").Vehicle | null} vehicle
+ * @param {string} [referenceIsoDate]
+ * @returns {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean}>}
+ */
+export function summarizeTaxReminders(vehicle, referenceIsoDate) {
+  if (!vehicle) return [];
+
+  const todayStr =
+    referenceIsoDate ||
+    new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const todayMs = Date.parse(`${todayStr}T00:00:00Z`);
+  if (Number.isNaN(todayMs)) return [];
+
+  const MS_PER_DAY = 86400000;
+  /** @type {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean}>} */
+  const items = [];
+
+  const targets = [
+    { kind: /** @type {const} */ ("tax"), label: "Pajak Tahunan (STNK)", raw: vehicle.tax_due_date },
+    { kind: /** @type {const} */ ("plate"), label: "Ganti Plat 5 Tahunan", raw: vehicle.plate_due_date }
+  ];
+
+  for (const t of targets) {
+    if (!t.raw) continue;
+    const dueStr = String(t.raw).slice(0, 10);
+    const dueMs = Date.parse(`${dueStr}T00:00:00Z`);
+    if (Number.isNaN(dueMs)) continue;
+
+    const daysRemaining = Math.round((dueMs - todayMs) / MS_PER_DAY);
+    items.push({
+      kind: t.kind,
+      label: t.label,
+      dueDate: dueStr,
+      daysRemaining,
+      overdue: daysRemaining < 0,
+      urgent: daysRemaining <= 30
+    });
+  }
+
+  return items.sort((a, b) => a.daysRemaining - b.daysRemaining);
+}
+
+/**
+ * Calculates the next tax or 5-year plate due date by adding 1 or 5 years
+ * while preserving the original month and day (handling leap years safely).
+ *
+ * @param {string | null | undefined} currentDueDate
+ * @param {'tax' | 'plate'} kind
+ * @param {string} [fallbackIsoDate]
+ * @returns {string}
+ */
+export function calculateNextTaxDueDate(currentDueDate, kind, fallbackIsoDate) {
+  const yearsToAdd = kind === "plate" ? 5 : 1;
+  const baseStr = String(currentDueDate || fallbackIsoDate || "").slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(baseStr);
+
+  if (!match) {
+    const now = new Date();
+    const targetYear = now.getFullYear() + yearsToAdd;
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${targetYear}-${month}-${day}`;
+  }
+
+  const year = Number(match[1]) + yearsToAdd;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const maxDayInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const safeDay = Math.min(day, maxDayInMonth);
+
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(
+    safeDay
+  ).padStart(2, "0")}`;
+}
+
+/**
+ * @param {import("../types.js").FuelLog[]} fuelLogs
+ * @returns {Array<{brand: string, fillCount: number, totalLiters: number, totalCost: number, avgPricePerLiter: number}>}
+ */
+export function summarizeFuelBrandBreakdown(fuelLogs) {
+  if (!Array.isArray(fuelLogs) || fuelLogs.length === 0) return [];
+
+  /** @type {Map<string, {brand: string, fillCount: number, totalLiters: number, totalCost: number}>} */
+  const map = new Map();
+
+  for (const log of fuelLogs) {
+    const brand = String(log.fuel_brand || "BBM").trim() || "BBM";
+    const liters = Number(log.liters) || 0;
+    const cost = Number(log.total_cost) || 0;
+    if (liters <= 0 && cost <= 0) continue;
+
+    const current = map.get(brand) || {
+      brand,
+      fillCount: 0,
+      totalLiters: 0,
+      totalCost: 0
+    };
+    current.fillCount += 1;
+    current.totalLiters += liters;
+    current.totalCost += cost;
+    map.set(brand, current);
+  }
+
+  return [...map.values()]
+    .map((item) => ({
+      brand: item.brand,
+      fillCount: item.fillCount,
+      totalLiters: Number(item.totalLiters.toFixed(2)),
+      totalCost: Math.round(item.totalCost),
+      avgPricePerLiter:
+        item.totalLiters > 0 ? Math.round(item.totalCost / item.totalLiters) : 0
+    }))
+    .sort((a, b) => b.totalCost - a.totalCost);
+}
