@@ -5,6 +5,7 @@ import {
   calculateLitersFromCost,
   detectOdometerAnomaly,
   formatLiters,
+  summarizeFuelBrandBreakdown,
   summarizeMonthlySpend,
   summarizeServiceReminders,
   summarizeTaxReminders,
@@ -106,4 +107,20 @@ test("summarizeTaxReminders calculates countdowns, urgency, and overdue states",
   assert.equal(reminders[1].kind, "tax");
   assert.equal(reminders[1].daysRemaining, 13);
   assert.equal(reminders[1].urgent, true);
+});
+
+test("summarizeFuelBrandBreakdown aggregates spend, liters, and average unit price per brand", () => {
+  const fuelLogs = [
+    { id: "1", logged_at: "2026-11-01", odometer_km: 1000, fuel_brand: "Pertamax", liters: 2.0, total_cost: 24200, is_full_tank: true },
+    { id: "2", logged_at: "2026-11-08", odometer_km: 1100, fuel_brand: "Pertamax", liters: 3.0, total_cost: 36300, is_full_tank: true },
+    { id: "3", logged_at: "2026-11-15", odometer_km: 1200, fuel_brand: "Shell Super", liters: 2.5, total_cost: 30725, is_full_tank: true }
+  ];
+
+  const breakdown = summarizeFuelBrandBreakdown(fuelLogs);
+  assert.equal(breakdown.length, 2);
+  assert.equal(breakdown[0].brand, "Pertamax");
+  assert.equal(breakdown[0].fillCount, 2);
+  assert.equal(breakdown[0].totalLiters, 5);
+  assert.equal(breakdown[0].totalCost, 60500);
+  assert.equal(breakdown[0].avgPricePerLiter, 12100);
 });

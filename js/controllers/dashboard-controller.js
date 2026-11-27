@@ -18,6 +18,7 @@ import {
   formatIDR,
   formatLiters,
   formatNumber,
+  summarizeFuelBrandBreakdown,
   summarizeMonthlySpend,
   summarizeServiceReminders,
   summarizeTaxReminders,
@@ -252,6 +253,8 @@ function renderDashboard() {
     summarizeServiceReminders(state.maintenanceLogs, telemetry.currentOdometer)
   );
   renderMonthlyChart(summarizeMonthlySpend(state.fuelLogs, state.maintenanceLogs, 6));
+  renderEfficiencyTrend(vehicle, telemetry);
+  renderFuelBrandBreakdown();
   renderRecentActivity();
 }
 
@@ -341,6 +344,83 @@ function renderMonthlyChart(buckets) {
         </div>
       `;
     })
+    .join("");
+}
+
+function renderEfficiencyTrend(vehicle, telemetry) {
+  const container = qs("#efficiency-trend-chart");
+  const rangeBadge = qs("#kpi-tank-range");
+  const tankCap = Number(vehicle?.tank_capacity_liters ?? 3.7);
+
+  if (rangeBadge) {
+    if (telemetry.avgKmPerLiter !== null && tankCap > 0) {
+      const estRange = Math.round(telemetry.avgKmPerLiter * tankCap);
+      rangeBadge.textContent = `1 Tangki (${formatLiters(tankCap)}): ~${formatNumber(estRange, 0)} km`;
+    } else {
+      rangeBadge.textContent = "Estimasi tangki: — km";
+    }
+  }
+
+  if (!container) return;
+
+  const recentPoints = telemetry.efficiencySeries.slice(-8);
+  if (!recentPoints.length) {
+    container.innerHTML = `<p class="text-sm text-slate-500">Catat minimal 2 kali pengisian <strong>Full Tank</strong> untuk melihat grafik tren km/L.</p>`;
+    return;
+  }
+
+  const maxKmpl = Math.max(...recentPoints.map((p) => p.km_per_liter), 1);
+  const bestKmpl = Math.max(...recentPoints.map((p) => p.km_per_liter));
+
+  container.innerHTML = recentPoints
+    .map((pt) => {
+      const pct = Math.max(8, Math.round((pt.km_per_liter / maxKmpl) * 100));
+      const isBest = pt.km_per_liter === bestKmpl && recentPoints.length > 1;
+      const barColor = isBest ? "bg-emerald-500" : "bg-sky-500";
+      return `
+        <div class="space-y-1">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">
+              ${escapeHtml(formatDateID(pt.logged_at))}
+              <span class="text-slate-400">(${formatNumber(pt.distance_km, 0)} km / ${formatLiters(pt.liters_used)})</span>
+            </span>
+            <span class="font-bold ${isBest ? "text-emerald-700" : "text-slate-900"}">
+              ${formatNumber(pt.km_per_liter, 2)} km/L
+            </span>
+          </div>
+          <div class="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+            <div class="${barColor} h-full rounded-full transition-all" style="width: ${pct}%"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderFuelBrandBreakdown() {
+  const container = qs("#fuel-brand-breakdown");
+  if (!container) return;
+
+  const rows = summarizeFuelBrandBreakdown(state.fuelLogs);
+  if (!rows.length) {
+    container.innerHTML = `<p class="text-sm text-slate-500">Belum ada data pengisian BBM.</p>`;
+    return;
+  }
+
+  container.innerHTML = rows
+    .map(
+      (row) => `
+      <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5">
+        <div>
+          <p class="text-sm font-semibold text-slate-900">${escapeHtml(row.brand)}</p>
+          <p class="text-xs text-slate-500">
+            ${row.fillCount}x isi • ${formatLiters(row.totalLiters)} • Rata-rata ${escapeHtml(formatIDR(row.avgPricePerLiter))}/L
+          </p>
+        </div>
+        <p class="shrink-0 text-sm font-bold text-slate-900">${escapeHtml(formatIDR(row.totalCost))}</p>
+      </div>
+    `
+    )
     .join("");
 }
 
