@@ -256,7 +256,7 @@ function renderServiceReminders(reminders) {
   if (!container) return;
 
   const vehicle = getActiveVehicle();
-  const taxItems = summarizeTaxReminders(vehicle);
+  const taxItems = summarizeTaxReminders(vehicle, getTodayIsoDate(), state.maintenanceLogs);
 
   if (!taxItems.length && !reminders.length) {
     container.innerHTML = `<p class="text-sm text-slate-500">Semua jadwal servis &amp; pajak berada dalam batas aman.</p>`;
@@ -269,15 +269,17 @@ function renderServiceReminders(reminders) {
         ? "bg-rose-100 text-rose-700"
         : item.urgent
           ? "bg-amber-100 text-amber-800"
-          : item.canPay
-            ? "bg-sky-100 text-sky-700"
-            : "bg-emerald-50 text-emerald-700";
+          : item.paid
+            ? "bg-emerald-100 text-emerald-700"
+            : "bg-sky-100 text-sky-700";
 
       const statusText = item.overdue
         ? `Terlambat ${Math.abs(item.daysRemaining)} hari`
         : item.daysRemaining === 0
           ? "Jatuh tempo hari ini"
-          : `${item.daysRemaining} hari lagi`;
+          : item.paid && item.kind === "tax"
+            ? `Sudah Dibayar (${item.daysRemaining} hari lagi)`
+            : `${item.daysRemaining} hari lagi`;
 
       const actionBtnHtml = item.canPay
         ? `<button
@@ -488,6 +490,40 @@ function renderRecentActivity() {
     .join("");
 }
 
+/**
+ * Automatically persists reconciled tax_due_date / plate_due_date to the vehicle row
+ * if a payment log was already recorded in maintenance_logs.
+ */
+async function syncVehicleTaxDatesFromLogs() {
+  const vehicle = getActiveVehicle();
+  if (!vehicle) return;
+
+  const taxItems = summarizeTaxReminders(vehicle, getTodayIsoDate(), state.maintenanceLogs);
+  /** @type {Partial<import("../types.js").Vehicle>} */
+  const updates = {};
+
+  for (const item of taxItems) {
+    if (!item.needsProfileSync) continue;
+    if (item.kind === "tax" && vehicle.tax_due_date !== item.dueDate) {
+      updates.tax_due_date = item.dueDate;
+    }
+    if (item.kind === "plate" && vehicle.plate_due_date !== item.dueDate) {
+      updates.plate_due_date = item.dueDate;
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    try {
+      const updated = await updateVehicle(vehicle.id, updates);
+      state.vehicles = state.vehicles.map((v) =>
+        v.id === vehicle.id ? { ...v, ...updated } : v
+      );
+    } catch {
+      // Tetap tampilkan hasil rekonsiliasi lokal meskipun gagal update latar belakang
+    }
+  }
+}
+
 async function loadActiveVehicleData() {
   if (!state.activeVehicleId) {
     state.fuelLogs = [];
@@ -504,6 +540,7 @@ async function loadActiveVehicleData() {
 
   state.fuelLogs = fuelLogs;
   state.maintenanceLogs = maintenanceLogs;
+  await syncVehicleTaxDatesFromLogs();
   renderDashboard();
 }
 

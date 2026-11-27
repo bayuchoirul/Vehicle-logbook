@@ -331,65 +331,6 @@ export function detectOdometerAnomaly(logs, targetOdometer, targetDate, excludeI
 }
 
 /**
- * Summarizes STNK annual tax and 5-year plate reminders, including whether the
- * "Sudah Bayar" action button should be displayed:
- * - Annual STNK tax ('tax'): shown when <= 60 days remaining (hidden once paid & extended > 60 days).
- * - 5-year plate renewal ('plate'): shown only starting H-7 (<= 7 days remaining).
- *
- * @param {import("../types.js").Vehicle | null} vehicle
- * @param {string} [referenceIsoDate]
- * @returns {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean, canPay: boolean}>}
- */
-export function summarizeTaxReminders(vehicle, referenceIsoDate) {
-  if (!vehicle) return [];
-
-  const todayStr =
-    referenceIsoDate ||
-    new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const todayMs = Date.parse(`${todayStr}T00:00:00Z`);
-  if (Number.isNaN(todayMs)) return [];
-
-  const MS_PER_DAY = 86400000;
-  /** @type {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean, canPay: boolean}>} */
-  const items = [];
-
-  const targets = [
-    {
-      kind: /** @type {const} */ ("tax"),
-      label: "Pajak Tahunan (STNK)",
-      raw: vehicle.tax_due_date,
-      payWindowDays: 60
-    },
-    {
-      kind: /** @type {const} */ ("plate"),
-      label: "Ganti Plat 5 Tahunan",
-      raw: vehicle.plate_due_date,
-      payWindowDays: 7
-    }
-  ];
-
-  for (const t of targets) {
-    if (!t.raw) continue;
-    const dueStr = String(t.raw).slice(0, 10);
-    const dueMs = Date.parse(`${dueStr}T00:00:00Z`);
-    if (Number.isNaN(dueMs)) continue;
-
-    const daysRemaining = Math.round((dueMs - todayMs) / MS_PER_DAY);
-    items.push({
-      kind: t.kind,
-      label: t.label,
-      dueDate: dueStr,
-      daysRemaining,
-      overdue: daysRemaining < 0,
-      urgent: daysRemaining <= 30,
-      canPay: daysRemaining <= t.payWindowDays
-    });
-  }
-
-  return items.sort((a, b) => a.daysRemaining - b.daysRemaining);
-}
-
-/**
  * Calculates the next tax or 5-year plate due date by adding 1 or 5 years
  * while preserving the original month and day (handling leap years safely).
  *
@@ -420,6 +361,138 @@ export function calculateNextTaxDueDate(currentDueDate, kind, fallbackIsoDate) {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(
     safeDay
   ).padStart(2, "0")}`;
+}
+
+/**
+ * Resolves the effective due date and whether a payment log in maintenance_logs
+ * already settled the recorded cycle.
+ *
+ * @param {string} rawDueDate
+ * @param {'tax' | 'plate'} kind
+ * @param {import("../types.js").MaintenanceLog[]} maintenanceLogs
+ * @returns {{effectiveDueDate: string, wasSettledByLog: boolean, needsProfileSync: boolean}}
+ */
+function resolveEffectiveTaxDueDate(rawDueDate, kind, maintenanceLogs) {
+  let effectiveDue = String(rawDueDate).slice(0, 10);
+  let wasSettledByLog = false;
+  let needsProfileSync = false;
+
+  if (!Array.isArray(maintenanceLogs) || maintenanceLogs.length === 0) {
+    return { effectiveDueDate: effectiveDue, wasSettledByLog, needsProfileSync };
+  }
+
+  const matchingLogs = maintenanceLogs
+    .filter((log) => {
+      const titleLower = String(log.title || "").toLowerCase();
+      if (kind === "plate") {
+        return (
+          titleLower.includes("plat 5") ||
+          titleLower.includes("ganti plat") ||
+          titleLower.includes("perpanjangan stnk")
+        );
+      }
+      return (
+        titleLower.includes("pajak") ||
+        titleLower.includes("stnk") ||
+        titleLower.includes("pkb")
+      );
+    })
+    .sort((a, b) => String(a.logged_at).localeCompare(String(b.logged_at)));
+
+  for (const log of matchingLogs) {
+    const paidStr = String(log.logged_at || "").slice(0, 10);
+    if (!paidStr) continue;
+
+    // Jika pembayaran dicatat pada siklus jatuh tempo berjalan (maks. 60 hari sebelum jatuh tempo s.d. setelahnya)
+    const dueYear = Number(effectiveDue.slice(0, 4));
+    const paidYear = Number(paidStr.slice(0, 4));
+    const dueMs = Date.parse(`${effectiveDue}T00:00:00Z`);
+    const paidMs = Date.parse(`${paidStr}T00:00:00Z`);
+
+    if (
+      !Number.isNaN(dueMs) &&
+      !Number.isNaN(paidMs) &&
+      (paidMs >= dueMs - 60 * 86400000 || paidYear === dueYear)
+    ) {
+      effectiveDue = calculateNextTaxDueDate(effectiveDue, kind, paidStr);
+      wasSettledByLog = true;
+      needsProfileSync = true;
+    }
+  }
+
+  return { effectiveDueDate: effectiveDue, wasSettledByLog, needsProfileSync };
+}
+
+/**
+ * Summarizes STNK annual tax and 5-year plate reminders, reconciling any tax payment
+ * already logged in maintenanceLogs:
+ * - Annual STNK tax ('tax'): 'Sudah Bayar' button appears only when <= 60 days remaining.
+ *   Once paid (either via button or logged in maintenanceLogs), status shows 'Sudah Dibayar'
+ *   and the button is hidden until the next renewal window.
+ * - 5-year plate renewal ('plate'): 'Sudah Bayar' button appears starting H-7 (<= 7 days remaining).
+ *
+ * @param {import("../types.js").Vehicle | null} vehicle
+ * @param {string} [referenceIsoDate]
+ * @param {import("../types.js").MaintenanceLog[]} [maintenanceLogs=[]]
+ * @returns {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean, canPay: boolean, paid: boolean, needsProfileSync: boolean}>}
+ */
+export function summarizeTaxReminders(vehicle, referenceIsoDate, maintenanceLogs = []) {
+  if (!vehicle) return [];
+
+  const todayStr =
+    referenceIsoDate ||
+    new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const todayMs = Date.parse(`${todayStr}T00:00:00Z`);
+  if (Number.isNaN(todayMs)) return [];
+
+  const MS_PER_DAY = 86400000;
+  /** @type {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean, canPay: boolean, paid: boolean, needsProfileSync: boolean}>} */
+  const items = [];
+
+  const targets = [
+    {
+      kind: /** @type {const} */ ("tax"),
+      label: "Pajak Tahunan (STNK)",
+      raw: vehicle.tax_due_date,
+      payWindowDays: 60
+    },
+    {
+      kind: /** @type {const} */ ("plate"),
+      label: "Ganti Plat 5 Tahunan",
+      raw: vehicle.plate_due_date,
+      payWindowDays: 7
+    }
+  ];
+
+  for (const t of targets) {
+    if (!t.raw) continue;
+    const { effectiveDueDate, wasSettledByLog, needsProfileSync } = resolveEffectiveTaxDueDate(
+      t.raw,
+      t.kind,
+      maintenanceLogs
+    );
+
+    const dueMs = Date.parse(`${effectiveDueDate}T00:00:00Z`);
+    if (Number.isNaN(dueMs)) continue;
+
+    const daysRemaining = Math.round((dueMs - todayMs) / MS_PER_DAY);
+    const canPay = daysRemaining <= t.payWindowDays;
+    const paid = !canPay && (wasSettledByLog || daysRemaining > t.payWindowDays);
+
+    items.push({
+      kind: t.kind,
+      label: t.label,
+      dueDate: effectiveDueDate,
+      daysRemaining,
+      overdue: daysRemaining < 0,
+      urgent: daysRemaining <= 30,
+      canPay,
+      paid,
+      needsProfileSync
+    });
+  }
+
+  return items.sort((a, b) => a.daysRemaining - b.daysRemaining);
 }
 
 /**
