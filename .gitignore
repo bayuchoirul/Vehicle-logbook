@@ -1,5 +1,9 @@
 # Dependencies
 node_modules/
+js/config.js
+.env
+.env.local
+.DS_Store
 
 # Environment & generated secrets
 .env

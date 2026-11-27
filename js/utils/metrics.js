@@ -13,8 +13,6 @@ export const MAINTENANCE_CATEGORIES = {
 };
 
 /**
- * Standard preventive maintenance intervals (in kilometers) for daily commuter scooters.
- * Used as optional quick-fill suggestions in the service form.
  * @type {Record<string, number>}
  */
 export const DEFAULT_SERVICE_INTERVALS_KM = {
@@ -27,7 +25,6 @@ export const DEFAULT_SERVICE_INTERVALS_KM = {
 };
 
 /**
- * Formats an integer/float into Indonesian Rupiah currency string.
  * @param {number} amount
  * @returns {string}
  */
@@ -42,7 +39,6 @@ export function formatIDR(amount) {
 }
 
 /**
- * Formats a number with Indonesian decimal separators.
  * @param {number} value
  * @param {number} [decimals=1]
  * @returns {string}
@@ -57,7 +53,6 @@ export function formatNumber(value, decimals = 1) {
 }
 
 /**
- * Formats fuel volume consistently across KPI cards, forms, and log tables (2 decimal places).
  * @param {number} liters
  * @returns {string}
  */
@@ -68,7 +63,6 @@ export function formatLiters(liters) {
 }
 
 /**
- * Formats YYYY-MM-DD into a readable Indonesian date (e.g., "14 Nov 2026").
  * @param {string} isoDate
  * @returns {string}
  */
@@ -84,8 +78,6 @@ export function formatDateID(isoDate) {
 }
 
 /**
- * Calculates fuel volume in liters from total spend and unit price per liter.
- * Rounded to 3 decimal places to match NUMERIC(8,3) in PostgreSQL.
  * @param {number} totalCost
  * @param {number} pricePerLiter
  * @returns {number}
@@ -100,9 +92,6 @@ export function calculateLitersFromCost(totalCost, pricePerLiter) {
 }
 
 /**
- * Calculates fuel efficiency (km/L) across chronological full-tank cycles.
- * Partial refills between two full tanks are accumulated into the closing full-tank cycle.
- *
  * @param {import("../types.js").FuelLog[]} fuelLogs
  * @returns {Array<{id: string, logged_at: string, odometer_km: number, distance_km: number, liters_used: number, km_per_liter: number}>}
  */
@@ -156,8 +145,6 @@ export function calculateFuelEfficiencySeries(fuelLogs) {
 }
 
 /**
- * Summarizes lifetime telemetry & cost KPIs for a vehicle.
- *
  * @param {import("../types.js").Vehicle | null} vehicle
  * @param {import("../types.js").FuelLog[]} fuelLogs
  * @param {import("../types.js").MaintenanceLog[]} maintenanceLogs
@@ -210,8 +197,6 @@ export function summarizeVehicleTelemetry(vehicle, fuelLogs, maintenanceLogs) {
 }
 
 /**
- * Evaluates upcoming or overdue maintenance items based on the latest log per category.
- *
  * @param {import("../types.js").MaintenanceLog[]} maintenanceLogs
  * @param {number} currentOdometer
  * @param {number} [warningThresholdKm=500]
@@ -255,8 +240,6 @@ export function summarizeServiceReminders(
 }
 
 /**
- * Aggregates monthly fuel and maintenance expenses for the last N months.
- *
  * @param {import("../types.js").FuelLog[]} fuelLogs
  * @param {import("../types.js").MaintenanceLog[]} maintenanceLogs
  * @param {number} [months=6]
@@ -300,9 +283,6 @@ export function summarizeMonthlySpend(fuelLogs, maintenanceLogs, months = 6) {
 }
 
 /**
- * Detects potential odometer ordering anomalies across existing logs for a vehicle.
- * Returns a human-readable Indonesian warning string or null when consistent.
- *
  * @param {Array<{id?: string, logged_at: string, odometer_km: number | string}>} logs
  * @param {number} targetOdometer
  * @param {string} targetDate
@@ -351,10 +331,8 @@ export function detectOdometerAnomaly(logs, targetOdometer, targetDate, excludeI
 }
 
 /**
- * Computes annual STNK tax and 5-year plate renewal countdowns for a vehicle.
- *
  * @param {import("../types.js").Vehicle | null} vehicle
- * @param {string} [referenceIsoDate] - YYYY-MM-DD (defaults to local today)
+ * @param {string} [referenceIsoDate]
  * @returns {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean}>}
  */
 export function summarizeTaxReminders(vehicle, referenceIsoDate) {
@@ -396,8 +374,6 @@ export function summarizeTaxReminders(vehicle, referenceIsoDate) {
 }
 
 /**
- * Summarizes fuel spend, volume, average unit price, and fill count grouped by fuel_brand.
- *
  * @param {import("../types.js").FuelLog[]} fuelLogs
  * @returns {Array<{brand: string, fillCount: number, totalLiters: number, totalCost: number, avgPricePerLiter: number}>}
  */

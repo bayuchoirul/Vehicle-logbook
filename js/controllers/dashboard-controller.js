@@ -60,7 +60,6 @@ function getTodayIsoDate() {
 }
 
 /**
- * Finds the best matching FuelPriceOption for a vehicle's primary fuel type or previous log.
  * @param {string} [preferredName]
  * @returns {import("../types.js").FuelPriceOption}
  */
@@ -80,7 +79,6 @@ function resolveDefaultFuelOption(preferredName) {
 }
 
 /**
- * Populates a <select> with grouped Indonesian fuel brands & products.
  * @param {HTMLSelectElement | null} selectEl
  * @param {string} [selectedProductName]
  */
@@ -117,9 +115,6 @@ function renderFuelSelectOptions(selectEl, selectedProductName) {
   selectEl.innerHTML = html;
 }
 
-/**
- * Recalculates and updates the automatic volume preview inside the Add Fuel modal.
- */
 function updateFuelLitersPreview() {
   const totalInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-total"));
   const priceInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-price"));
@@ -141,9 +136,6 @@ function updateFuelLitersPreview() {
   }
 }
 
-/**
- * Updates the suggested maintenance interval helper banner based on category + current odometer.
- */
 function updateMaintIntervalHint() {
   const categorySelect = /** @type {HTMLSelectElement | null} */ (qs("#maint-category"));
   const odoInput = /** @type {HTMLInputElement | null} */ (qs("#maint-odometer"));

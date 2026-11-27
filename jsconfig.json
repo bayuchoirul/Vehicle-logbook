@@ -3,11 +3,12 @@
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "checkJs": true,
+    "allowJs": true,
     "strict": false,
     "noEmit": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "skipLibCheck": true
   },
-  "include": ["js/**/*.js", "scripts/**/*.js", "tests/**/*.js"],
-  "exclude": ["node_modules"]
+  "include": ["js/**/*.js", "scripts/**/*.js", "tests/**/*.js"]
 }

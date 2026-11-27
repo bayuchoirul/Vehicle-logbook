@@ -1,43 +1,28 @@
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { APP_CONFIG } from "../config.js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { SUPABASE_CONFIG } from "./config.js";
 
-/** @type {import("@supabase/supabase-js").SupabaseClient | null} */
-let cachedClient = null;
+/** @type {import("https://esm.sh/@supabase/supabase-js@2.49.1").SupabaseClient | null} */
+let clientInstance = null;
 
-/**
- * Returns true when valid Supabase credentials are configured.
- * @returns {boolean}
- */
-export function isSupabaseConfigured() {
-  const url = APP_CONFIG.supabaseUrl;
-  const key = APP_CONFIG.supabaseAnonKey;
-  return Boolean(
-    url &&
-      key &&
-      url.startsWith("https://") &&
-      !url.includes("your-project-ref") &&
-      !key.includes("your-supabase-anon-key")
-  );
-}
-
-/**
- * Returns the singleton Supabase client instance.
- * @returns {import("@supabase/supabase-js").SupabaseClient}
- */
 export function getSupabaseClient() {
-  if (!isSupabaseConfigured()) {
+  if (clientInstance) return clientInstance;
+
+  const url = String(SUPABASE_CONFIG?.url || "").trim();
+  const anonKey = String(SUPABASE_CONFIG?.anonKey || "").trim();
+
+  if (!url || !anonKey) {
     throw new Error(
-      "Konfigurasi Supabase belum diisi. Set SUPABASE_URL dan SUPABASE_ANON_KEY di Vercel atau file .env lalu jalankan `npm run build`."
+      "Konfigurasi Supabase belum tersedia. Pastikan SUPABASE_URL dan SUPABASE_ANON_KEY diatur di Vercel Environment Variables."
     );
   }
-  if (!cachedClient) {
-    cachedClient = createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      }
-    });
-  }
-  return cachedClient;
+
+  clientInstance = createClient(url, anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
+
+  return clientInstance;
 }

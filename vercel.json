@@ -3,7 +3,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".",
   "cleanUrls": true,
-  "trailingSlash": false,
   "rewrites": [
     { "source": "/login", "destination": "/login.html" },
     { "source": "/logs", "destination": "/logs.html" }
@@ -18,13 +17,6 @@
     {
       "source": "/js/config.js",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
-      ]
-    },
-    {
-      "source": "/manifest.json",
-      "headers": [
-        { "key": "Content-Type", "value": "application/manifest+json" },
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
     }

@@ -1,210 +1,209 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" class="h-full bg-slate-50">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0284c7" />
   <title>Masuk — Vehicle Logbook</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="stylesheet" href="./css/output.css" />
-  <link rel="manifest" href="./manifest.json" />
 </head>
-<body class="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-slate-900">
-
-  <main class="w-full max-w-md bg-white rounded-2xl shadow-xs border border-slate-200/80 p-6 sm:p-8">
-    <!-- Badge -->
-    <div class="mb-3">
-      <span class="inline-block bg-sky-100 text-sky-700 text-xs font-semibold px-2.5 py-1 rounded-full">
+<body class="min-h-full bg-gradient-to-br from-slate-100 via-sky-50/60 to-slate-100 text-slate-900 flex flex-col justify-center px-4 py-10">
+  <main class="mx-auto w-full max-w-md">
+    <div class="mb-6 text-center">
+      <span class="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">
         Vehicle Logbook PWA
       </span>
+      <h1 id="auth-heading" class="mt-3 text-2xl font-bold tracking-tight text-slate-900">
+        Selamat Datang
+      </h1>
+      <p id="auth-subheading" class="mt-1 text-sm text-slate-600">
+        Masuk untuk memantau konsumsi BBM &amp; riwayat servis kendaraan.
+      </p>
     </div>
 
-    <!-- Header Dinamis -->
-    <h1 id="auth-title" class="text-2xl font-bold tracking-tight text-slate-900">
-      Selamat Datang
-    </h1>
-    <p id="auth-subtitle" class="mt-1 text-sm text-slate-500">
-      Masuk untuk memantau konsumsi BBM &amp; riwayat servis kendaraan.
-    </p>
+    <div class="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm sm:p-8">
+      <div
+        id="auth-banner"
+        role="alert"
+        class="mb-4 hidden rounded-xl border px-3.5 py-2.5 text-sm font-medium"
+      ></div>
 
-    <!-- Alert Feedback -->
-    <div id="auth-alert" class="hidden mt-4 p-3 rounded-xl text-xs font-medium border"></div>
-
-    <!-- Tab Masuk / Daftar -->
-    <div id="auth-tabs" class="mt-6 grid grid-cols-2 bg-slate-100 p-1 rounded-xl">
-      <button
-        type="button"
-        id="tab-signin"
-        class="py-2 text-sm font-semibold rounded-lg bg-white text-slate-900 shadow-xs transition cursor-pointer"
-      >
-        Masuk
-      </button>
-      <button
-        type="button"
-        id="tab-signup"
-        class="py-2 text-sm font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition cursor-pointer"
-      >
-        Daftar
-      </button>
-    </div>
-
-    <!-- FORM 1: MASUK & DAFTAR -->
-    <form id="auth-form" class="mt-5 space-y-4">
-      <div>
-        <div class="flex items-center justify-between mb-1.5">
-          <label for="email" class="block text-xs font-semibold text-slate-700">Email</label>
-          <button
-            type="button"
-            id="btn-forgot-username"
-            class="text-xs font-medium text-sky-600 hover:text-sky-700 cursor-pointer"
-          >
-            Lupa email / username?
-          </button>
-        </div>
-        <input
-          id="email"
-          type="email"
-          required
-          autocomplete="email"
-          placeholder="nama@email.com"
-          class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
-        />
+      <div id="auth-tabs" class="mb-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+        <button
+          type="button"
+          id="tab-signin"
+          class="rounded-lg bg-white py-2 text-sm font-semibold text-slate-900 shadow-xs transition"
+        >
+          Masuk
+        </button>
+        <button
+          type="button"
+          id="tab-signup"
+          class="rounded-lg py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 transition"
+        >
+          Daftar
+        </button>
       </div>
 
-      <div>
-        <div class="flex items-center justify-between mb-1.5">
-          <label for="password" class="block text-xs font-semibold text-slate-700">Kata Sandi</label>
-          <button
-            type="button"
-            id="btn-forgot-password"
-            class="text-xs font-medium text-sky-600 hover:text-sky-700 cursor-pointer"
-          >
-            Lupa kata sandi?
-          </button>
-        </div>
-        <input
-          id="password"
-          type="password"
-          required
-          minlength="6"
-          autocomplete="current-password"
-          placeholder="Minimal 6 karakter"
-          class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
-        />
-      </div>
-
-      <button
-        type="submit"
-        id="auth-submit-btn"
-        class="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-xl transition cursor-pointer"
-      >
-        Masuk ke Logbook
-      </button>
-    </form>
-
-    <!-- FORM 2: LUPA KATA SANDI -->
-    <form id="form-forgot-password" class="hidden mt-5 space-y-4">
-      <div>
-        <label for="input-reset-email" class="block text-xs font-semibold text-slate-700 mb-1.5">
-          Email Terdaftar
-        </label>
-        <input
-          id="input-reset-email"
-          type="email"
-          required
-          autocomplete="email"
-          placeholder="nama@email.com"
-          class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
-        />
-      </div>
-
-      <button
-        type="submit"
-        id="btn-reset-submit"
-        class="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-xl transition cursor-pointer"
-      >
-        Kirim Tautan Reset
-      </button>
-
-      <button
-        type="button"
-        data-back-signin
-        class="w-full text-center text-xs font-semibold text-slate-500 hover:text-slate-800 py-1 cursor-pointer"
-      >
-        &larr; Kembali ke halaman Masuk
-      </button>
-    </form>
-
-    <!-- FORM 3: BUAT KATA SANDI BARU (SETELAH KLIK LINK EMAIL) -->
-    <form id="form-new-password" class="hidden mt-5 space-y-4">
-      <div>
-        <label for="input-new-password" class="block text-xs font-semibold text-slate-700 mb-1.5">
-          Kata Sandi Baru
-        </label>
-        <input
-          id="input-new-password"
-          type="password"
-          required
-          minlength="6"
-          autocomplete="new-password"
-          placeholder="Minimal 6 karakter"
-          class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
-        />
-      </div>
-
-      <div>
-        <label for="input-confirm-password" class="block text-xs font-semibold text-slate-700 mb-1.5">
-          Konfirmasi Kata Sandi Baru
-        </label>
-        <input
-          id="input-confirm-password"
-          type="password"
-          required
-          minlength="6"
-          autocomplete="new-password"
-          placeholder="Ulangi kata sandi baru"
-          class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
-        />
-      </div>
-
-      <button
-        type="submit"
-        id="btn-new-password-submit"
-        class="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-xl transition cursor-pointer"
-      >
-        Simpan Kata Sandi Baru
-      </button>
-    </form>
-
-    <!-- PANEL 4: BANTUAN LUPA EMAIL / USERNAME -->
-    <div id="panel-forgot-username" class="hidden mt-5 space-y-4">
-      <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-2">
-        <p class="font-semibold text-slate-800">Bagaimana cara mengetahui akun saya?</p>
-        <ul class="list-disc pl-4 space-y-1">
-          <li><strong>Vehicle Logbook</strong> menggunakan alamat <strong>Email</strong> sebagai username masuk.</li>
-          <li>Cari di kotak masuk email Anda dengan kata kunci <code class="px-1 py-0.5 bg-slate-200/70 rounded text-slate-800">Vehicle Logbook</code> atau <code class="px-1 py-0.5 bg-slate-200/70 rounded text-slate-800">Confirm Your Signup</code>.</li>
-        </ul>
-
-        <div id="saved-email-box" class="hidden pt-2 border-t border-slate-200">
-          <p class="text-slate-500">Email terakhir yang digunakan di browser ini:</p>
-          <div class="mt-1.5 flex items-center justify-between gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200">
-            <span id="saved-email-masked" class="font-mono font-semibold text-slate-800"></span>
+      <form id="form-auth" class="space-y-4">
+        <div>
+          <div class="mb-1.5 flex items-center justify-between">
+            <label for="auth-email" class="block text-sm font-medium text-slate-700">Email</label>
             <button
               type="button"
-              id="btn-use-saved-email"
-              class="text-xs font-semibold text-sky-600 hover:text-sky-700 cursor-pointer"
+              id="btn-forgot-email"
+              class="text-xs font-medium text-sky-600 hover:text-sky-700"
+            >
+              Lupa email / username?
+            </button>
+          </div>
+          <input
+            id="auth-email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            required
+            placeholder="nama@email.com"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+          />
+        </div>
+
+        <div>
+          <div class="mb-1.5 flex items-center justify-between">
+            <label for="auth-password" class="block text-sm font-medium text-slate-700">Kata Sandi</label>
+            <button
+              type="button"
+              id="btn-forgot-password"
+              class="text-xs font-medium text-sky-600 hover:text-sky-700"
+            >
+              Lupa kata sandi?
+            </button>
+          </div>
+          <input
+            id="auth-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            minlength="6"
+            required
+            placeholder="Minimal 6 karakter"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+          />
+        </div>
+
+        <button
+          type="submit"
+          id="btn-auth-submit"
+          class="w-full rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500/30 disabled:cursor-not-allowed disabled:opacity-60 transition"
+        >
+          Masuk ke Logbook
+        </button>
+      </form>
+
+      <form id="form-reset-request" class="hidden space-y-4">
+        <div>
+          <label for="reset-email" class="mb-1.5 block text-sm font-medium text-slate-700">
+            Email Terdaftar
+          </label>
+          <input
+            id="reset-email"
+            name="email"
+            type="email"
+            required
+            placeholder="nama@email.com"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+          />
+        </div>
+
+        <button
+          type="submit"
+          id="btn-reset-submit"
+          class="w-full rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-sky-700 disabled:opacity-60 transition"
+        >
+          Kirim Tautan Reset
+        </button>
+
+        <button
+          type="button"
+          data-back-signin
+          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+        >
+          &larr; Kembali ke halaman Masuk
+        </button>
+      </form>
+
+      <form id="form-update-password" class="hidden space-y-4">
+        <div>
+          <label for="new-password" class="mb-1.5 block text-sm font-medium text-slate-700">
+            Kata Sandi Baru
+          </label>
+          <input
+            id="new-password"
+            name="new_password"
+            type="password"
+            minlength="6"
+            required
+            placeholder="Minimal 6 karakter"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+          />
+        </div>
+
+        <div>
+          <label for="confirm-new-password" class="mb-1.5 block text-sm font-medium text-slate-700">
+            Konfirmasi Kata Sandi Baru
+          </label>
+          <input
+            id="confirm-new-password"
+            name="confirm_password"
+            type="password"
+            minlength="6"
+            required
+            placeholder="Ulangi kata sandi baru"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+          />
+        </div>
+
+        <button
+          type="submit"
+          id="btn-update-password-submit"
+          class="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-60 transition"
+        >
+          Simpan Kata Sandi Baru
+        </button>
+      </form>
+
+      <div id="panel-forgot-email" class="hidden space-y-4">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 space-y-2">
+          <p class="font-semibold text-slate-900">Bagaimana cara mengetahui akun saya?</p>
+          <ul class="list-disc pl-5 space-y-1 text-xs text-slate-600">
+            <li>Vehicle Logbook menggunakan alamat <strong>Email</strong> sebagai username masuk.</li>
+            <li>Cari di kotak masuk email Anda dengan kata kunci <code class="rounded bg-slate-200 px-1">Vehicle Logbook</code> atau <code class="rounded bg-slate-200 px-1">Confirm Your Signup</code>.</li>
+          </ul>
+        </div>
+
+        <div id="remembered-email-box" class="hidden rounded-xl border border-sky-200 bg-sky-50/80 p-3.5">
+          <p class="text-xs text-sky-800">Email terakhir yang digunakan di browser ini:</p>
+          <div class="mt-1.5 flex items-center justify-between gap-2">
+            <span id="remembered-email-masked" class="font-mono text-sm font-semibold text-slate-900"></span>
+            <button
+              type="button"
+              id="btn-use-remembered-email"
+              class="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700"
             >
               Gunakan
             </button>
           </div>
         </div>
-      </div>
 
-      <button
-        type="button"
-        data-back-signin
-        class="w-full text-center text-xs font-semibold text-slate-500 hover:text-slate-800 py-1 cursor-pointer"
-      >
-        &larr; Kembali ke halaman Masuk
-      </button>
+        <button
+          type="button"
+          data-back-signin
+          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+        >
+          &larr; Kembali ke halaman Masuk
+        </button>
+      </div>
     </div>
   </main>
 

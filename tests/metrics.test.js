@@ -1,438 +1,72 @@
-/**
- * Domain calculations, formatting, and telemetry helpers for Vehicle Logbook.
- */
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  calculateFuelEfficiencySeries,
+  calculateLitersFromCost,
+  detectOdometerAnomaly,
+  summarizeFuelBrandBreakdown,
+  summarizeServiceReminders,
+  summarizeTaxReminders,
+  summarizeVehicleTelemetry
+} from "../js/utils/metrics.js";
 
-export const MAINTENANCE_CATEGORIES = {
-  oil_change: "Ganti Oli Mesin / Gardan",
-  cvt_belt: "Servis CVT / V-Belt / Roller",
-  tires: "Ban & Tekanan Angin",
-  brakes: "Kampas & Minyak Rem",
-  battery: "Aki & Kelistrikan",
-  tune_up: "Tune Up & Injeksi",
-  other: "Lainnya"
-};
+test("calculateLitersFromCost rounds to 3 decimals", () => {
+  assert.equal(calculateLitersFromCost(35000, 12100), 2.893);
+  assert.equal(calculateLitersFromCost(0, 12100), 0);
+});
 
-/**
- * Standard preventive maintenance intervals (in kilometers) for daily commuter scooters.
- * Used as optional quick-fill suggestions in the service form.
- * @type {Record<string, number>}
- */
-export const DEFAULT_SERVICE_INTERVALS_KM = {
-  oil_change: 2000,
-  cvt_belt: 8000,
-  tires: 15000,
-  brakes: 10000,
-  battery: 20000,
-  tune_up: 4000
-};
+test("calculateFuelEfficiencySeries accumulates partial fills until closing full tank", () => {
+  const series = calculateFuelEfficiencySeries([
+    { id: "1", vehicle_id: "v1", logged_at: "2026-11-01", odometer_km: 1000, liters: 3.0, price_per_liter: 12100, total_cost: 36300, is_full_tank: true },
+    { id: "2", vehicle_id: "v1", logged_at: "2026-11-05", odometer_km: 1060, liters: 1.0, price_per_liter: 12100, total_cost: 12100, is_full_tank: false },
+    { id: "3", vehicle_id: "v1", logged_at: "2026-11-10", odometer_km: 1150, liters: 2.0, price_per_liter: 12100, total_cost: 24200, is_full_tank: true }
+  ]);
 
-/**
- * Formats an integer/float into Indonesian Rupiah currency string.
- * @param {number} amount
- * @returns {string}
- */
-export function formatIDR(amount) {
-  const num = Number(amount);
-  if (!Number.isFinite(num)) return "Rp 0";
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0
-  }).format(Math.round(num));
-}
+  assert.equal(series.length, 1);
+  assert.equal(series[0].distance_km, 150);
+  assert.equal(series[0].liters_used, 3);
+  assert.equal(series[0].km_per_liter, 50);
+});
 
-/**
- * Formats a number with Indonesian decimal separators.
- * @param {number} value
- * @param {number} [decimals=1]
- * @returns {string}
- */
-export function formatNumber(value, decimals = 1) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "—";
-  return new Intl.NumberFormat("id-ID", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals
-  }).format(num);
-}
-
-/**
- * Formats fuel volume consistently across KPI cards, forms, and log tables (2 decimal places).
- * @param {number} liters
- * @returns {string}
- */
-export function formatLiters(liters) {
-  const num = Number(liters);
-  if (!Number.isFinite(num) || num < 0) return "0,00 L";
-  return `${formatNumber(num, 2)} L`;
-}
-
-/**
- * Formats YYYY-MM-DD into a readable Indonesian date (e.g., "14 Nov 2026").
- * @param {string} isoDate
- * @returns {string}
- */
-export function formatDateID(isoDate) {
-  if (!isoDate) return "—";
-  const parsed = new Date(`${String(isoDate).slice(0, 10)}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return String(isoDate);
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric"
-  }).format(parsed);
-}
-
-/**
- * Calculates fuel volume in liters from total spend and unit price per liter.
- * Rounded to 3 decimal places to match NUMERIC(8,3) in PostgreSQL.
- * @param {number} totalCost
- * @param {number} pricePerLiter
- * @returns {number}
- */
-export function calculateLitersFromCost(totalCost, pricePerLiter) {
-  const cost = Number(totalCost);
-  const price = Number(pricePerLiter);
-  if (!Number.isFinite(cost) || !Number.isFinite(price) || cost <= 0 || price <= 0) {
-    return 0;
-  }
-  return Math.round((cost / price) * 1000) / 1000;
-}
-
-/**
- * Calculates fuel efficiency (km/L) across chronological full-tank cycles.
- * Partial refills between two full tanks are accumulated into the closing full-tank cycle.
- *
- * @param {import("../types.js").FuelLog[]} fuelLogs
- * @returns {Array<{id: string, logged_at: string, odometer_km: number, distance_km: number, liters_used: number, km_per_liter: number}>}
- */
-export function calculateFuelEfficiencySeries(fuelLogs) {
-  if (!Array.isArray(fuelLogs) || fuelLogs.length < 2) return [];
-
-  const sorted = [...fuelLogs].sort((a, b) => {
-    const dateDiff = String(a.logged_at).localeCompare(String(b.logged_at));
-    if (dateDiff !== 0) return dateDiff;
-    return Number(a.odometer_km) - Number(b.odometer_km);
-  });
-
-  /** @type {Array<{id: string, logged_at: string, odometer_km: number, distance_km: number, liters_used: number, km_per_liter: number}>} */
-  const points = [];
-  let anchorOdo = null;
-  let pendingLiters = 0;
-
-  for (const log of sorted) {
-    const odo = Number(log.odometer_km);
-    const liters = Number(log.liters);
-    if (!Number.isFinite(odo) || !Number.isFinite(liters) || liters <= 0) continue;
-
-    if (anchorOdo === null) {
-      if (log.is_full_tank) {
-        anchorOdo = odo;
-        pendingLiters = 0;
-      }
-      continue;
-    }
-
-    pendingLiters += liters;
-
-    if (log.is_full_tank) {
-      const distance = odo - anchorOdo;
-      if (distance > 0 && pendingLiters > 0) {
-        points.push({
-          id: log.id,
-          logged_at: log.logged_at,
-          odometer_km: odo,
-          distance_km: Number(distance.toFixed(1)),
-          liters_used: Number(pendingLiters.toFixed(3)),
-          km_per_liter: Number((distance / pendingLiters).toFixed(2))
-        });
-      }
-      anchorOdo = odo;
-      pendingLiters = 0;
-    }
-  }
-
-  return points;
-}
-
-/**
- * Summarizes lifetime telemetry & cost KPIs for a vehicle.
- *
- * @param {import("../types.js").Vehicle | null} vehicle
- * @param {import("../types.js").FuelLog[]} fuelLogs
- * @param {import("../types.js").MaintenanceLog[]} maintenanceLogs
- */
-export function summarizeVehicleTelemetry(vehicle, fuelLogs, maintenanceLogs) {
-  const initialOdo = Number(vehicle?.initial_odometer_km ?? 0);
-  const allOdos = [
-    initialOdo,
-    ...fuelLogs.map((f) => Number(f.odometer_km) || 0),
-    ...maintenanceLogs.map((m) => Number(m.odometer_km) || 0)
+test("summarizeVehicleTelemetry & summarizeFuelBrandBreakdown aggregate totals", () => {
+  const vehicle = { id: "v1", name: "Vario 110", initial_odometer_km: 10000 };
+  const fuels = [
+    { id: "f1", vehicle_id: "v1", logged_at: "2026-11-01", odometer_km: 10100, liters: 2.5, price_per_liter: 12100, total_cost: 30250, fuel_brand: "Pertamax", is_full_tank: true },
+    { id: "f2", vehicle_id: "v1", logged_at: "2026-11-08", odometer_km: 10225, liters: 2.5, price_per_liter: 12100, total_cost: 30250, fuel_brand: "Pertamax", is_full_tank: true }
+  ];
+  const maints = [
+    { id: "m1", vehicle_id: "v1", logged_at: "2026-11-09", odometer_km: 10225, category: "oil_change", title: "Ganti Oli", total_cost: 65000, next_due_km: 12225 }
   ];
 
-  const currentOdometer = allOdos.length ? Math.max(...allOdos) : 0;
-  const trackedDistance = Math.max(0, currentOdometer - initialOdo);
+  const tel = summarizeVehicleTelemetry(vehicle, fuels, maints);
+  assert.equal(tel.currentOdometer, 10225);
+  assert.equal(tel.trackedDistance, 225);
+  assert.equal(tel.avgKmPerLiter, 50);
+  assert.equal(tel.totalSpend, 125500);
 
-  const totalFuelCost = fuelLogs.reduce((acc, f) => acc + (Number(f.total_cost) || 0), 0);
-  const totalFuelLiters = fuelLogs.reduce((acc, f) => acc + (Number(f.liters) || 0), 0);
-  const totalMaintenanceCost = maintenanceLogs.reduce(
-    (acc, m) => acc + (Number(m.total_cost) || 0),
-    0
+  const brands = summarizeFuelBrandBreakdown(fuels);
+  assert.equal(brands.length, 1);
+  assert.equal(brands[0].brand, "Pertamax");
+  assert.equal(brands[0].fillCount, 2);
+
+  const reminders = summarizeServiceReminders(maints, 11800, 500);
+  assert.equal(reminders.length, 1);
+  assert.equal(reminders[0].remainingKm, 425);
+});
+
+test("summarizeTaxReminders & detectOdometerAnomaly validate dates and odometer", () => {
+  const tax = summarizeTaxReminders(
+    { id: "v1", name: "Vario", tax_due_date: "2026-12-10", plate_due_date: "2028-05-01" },
+    "2026-11-27"
   );
-  const totalSpend = totalFuelCost + totalMaintenanceCost;
+  assert.equal(tax[0].kind, "tax");
+  assert.equal(tax[0].daysRemaining, 13);
+  assert.equal(tax[0].urgent, true);
 
-  const efficiencySeries = calculateFuelEfficiencySeries(fuelLogs);
-  const totalEffDistance = efficiencySeries.reduce((acc, p) => acc + p.distance_km, 0);
-  const totalEffLiters = efficiencySeries.reduce((acc, p) => acc + p.liters_used, 0);
-
-  const avgKmPerLiter =
-    totalEffLiters > 0 ? Number((totalEffDistance / totalEffLiters).toFixed(2)) : null;
-  const lastKmPerLiter =
-    efficiencySeries.length > 0
-      ? efficiencySeries[efficiencySeries.length - 1].km_per_liter
-      : null;
-
-  const costPerKm =
-    trackedDistance > 0 ? Math.round(totalSpend / trackedDistance) : null;
-
-  return {
-    currentOdometer,
-    trackedDistance,
-    totalFuelCost,
-    totalFuelLiters: Number(totalFuelLiters.toFixed(2)),
-    totalMaintenanceCost,
-    totalSpend,
-    avgKmPerLiter,
-    lastKmPerLiter,
-    costPerKm,
-    efficiencySeries
-  };
-}
-
-/**
- * Evaluates upcoming or overdue maintenance items based on the latest log per category.
- *
- * @param {import("../types.js").MaintenanceLog[]} maintenanceLogs
- * @param {number} currentOdometer
- * @param {number} [warningThresholdKm=500]
- */
-export function summarizeServiceReminders(
-  maintenanceLogs,
-  currentOdometer,
-  warningThresholdKm = 500
-) {
-  /** @type {Map<string, import("../types.js").MaintenanceLog>} */
-  const latestByCategory = new Map();
-
-  for (const log of maintenanceLogs) {
-    const existing = latestByCategory.get(log.category);
-    if (!existing || Number(log.odometer_km) >= Number(existing.odometer_km)) {
-      latestByCategory.set(log.category, log);
-    }
-  }
-
-  /** @type {Array<{category: string, categoryLabel: string, title: string, nextDueKm: number, remainingKm: number, overdue: boolean}>} */
-  const reminders = [];
-
-  for (const log of latestByCategory.values()) {
-    const nextDue = Number(log.next_due_km);
-    if (!Number.isFinite(nextDue) || nextDue <= 0) continue;
-
-    const remainingKm = Math.round(nextDue - currentOdometer);
-    if (remainingKm <= warningThresholdKm) {
-      reminders.push({
-        category: log.category,
-        categoryLabel: MAINTENANCE_CATEGORIES[log.category] || log.category,
-        title: log.title,
-        nextDueKm: nextDue,
-        remainingKm,
-        overdue: remainingKm < 0
-      });
-    }
-  }
-
-  return reminders.sort((a, b) => a.remainingKm - b.remainingKm);
-}
-
-/**
- * Aggregates monthly fuel and maintenance expenses for the last N months.
- *
- * @param {import("../types.js").FuelLog[]} fuelLogs
- * @param {import("../types.js").MaintenanceLog[]} maintenanceLogs
- * @param {number} [months=6]
- */
-export function summarizeMonthlySpend(fuelLogs, maintenanceLogs, months = 6) {
-  const now = new Date();
-  /** @type {Array<{key: string, label: string, fuel: number, maintenance: number, total: number}>} */
-  const buckets = [];
-
-  for (let i = months - 1; i >= 0; i -= 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = new Intl.DateTimeFormat("id-ID", {
-      month: "short",
-      year: "2-digit"
-    }).format(d);
-    buckets.push({ key, label, fuel: 0, maintenance: 0, total: 0 });
-  }
-
-  const bucketMap = new Map(buckets.map((b) => [b.key, b]));
-
-  for (const f of fuelLogs) {
-    const key = String(f.logged_at || "").slice(0, 7);
-    const bucket = bucketMap.get(key);
-    if (bucket) {
-      bucket.fuel += Number(f.total_cost) || 0;
-      bucket.total = bucket.fuel + bucket.maintenance;
-    }
-  }
-
-  for (const m of maintenanceLogs) {
-    const key = String(m.logged_at || "").slice(0, 7);
-    const bucket = bucketMap.get(key);
-    if (bucket) {
-      bucket.maintenance += Number(m.total_cost) || 0;
-      bucket.total = bucket.fuel + bucket.maintenance;
-    }
-  }
-
-  return buckets;
-}
-
-/**
- * Detects potential odometer ordering anomalies across existing logs for a vehicle.
- * Returns a human-readable Indonesian warning string or null when consistent.
- *
- * @param {Array<{id?: string, logged_at: string, odometer_km: number | string}>} logs
- * @param {number} targetOdometer
- * @param {string} targetDate
- * @param {string | null} [excludeId=null]
- * @returns {string | null}
- */
-export function detectOdometerAnomaly(logs, targetOdometer, targetDate, excludeId = null) {
-  const odo = Number(targetOdometer);
-  if (!Array.isArray(logs) || !Number.isFinite(odo) || odo < 0 || !targetDate) {
-    return null;
-  }
-
-  const candidates = logs.filter((item) => item && item.id !== excludeId);
-  if (!candidates.length) return null;
-
-  const sorted = [...candidates].sort((a, b) => {
-    const dateCmp = String(a.logged_at).localeCompare(String(b.logged_at));
-    if (dateCmp !== 0) return dateCmp;
-    return Number(a.odometer_km) - Number(b.odometer_km);
-  });
-
-  const earlier = sorted.filter((item) => String(item.logged_at) <= String(targetDate));
-  const later = sorted.filter((item) => String(item.logged_at) > String(targetDate));
-
-  if (earlier.length > 0) {
-    const prevMaxOdo = Math.max(...earlier.map((item) => Number(item.odometer_km) || 0));
-    if (odo < prevMaxOdo) {
-      return `Odometer (${formatNumber(odo, 0)} km) lebih kecil dari catatan sebelumnya (${formatNumber(
-        prevMaxOdo,
-        0
-      )} km). Pastikan angka sudah sesuai.`;
-    }
-  }
-
-  if (later.length > 0) {
-    const nextMinOdo = Math.min(...later.map((item) => Number(item.odometer_km) || Infinity));
-    if (Number.isFinite(nextMinOdo) && odo > nextMinOdo) {
-      return `Odometer (${formatNumber(odo, 0)} km) lebih besar dari catatan setelahnya (${formatNumber(
-        nextMinOdo,
-        0
-      )} km). Pastikan urutan tanggal dan odometer benar.`;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Computes annual STNK tax and 5-year plate renewal countdowns for a vehicle.
- *
- * @param {import("../types.js").Vehicle | null} vehicle
- * @param {string} [referenceIsoDate] - YYYY-MM-DD (defaults to local today)
- * @returns {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean}>}
- */
-export function summarizeTaxReminders(vehicle, referenceIsoDate) {
-  if (!vehicle) return [];
-
-  const todayStr =
-    referenceIsoDate ||
-    new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const todayMs = Date.parse(`${todayStr}T00:00:00Z`);
-  if (Number.isNaN(todayMs)) return [];
-
-  const MS_PER_DAY = 86400000;
-  /** @type {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean}>} */
-  const items = [];
-
-  const targets = [
-    { kind: /** @type {const} */ ("tax"), label: "Pajak Tahunan (STNK)", raw: vehicle.tax_due_date },
-    { kind: /** @type {const} */ ("plate"), label: "Ganti Plat 5 Tahunan", raw: vehicle.plate_due_date }
-  ];
-
-  for (const t of targets) {
-    if (!t.raw) continue;
-    const dueStr = String(t.raw).slice(0, 10);
-    const dueMs = Date.parse(`${dueStr}T00:00:00Z`);
-    if (Number.isNaN(dueMs)) continue;
-
-    const daysRemaining = Math.round((dueMs - todayMs) / MS_PER_DAY);
-    items.push({
-      kind: t.kind,
-      label: t.label,
-      dueDate: dueStr,
-      daysRemaining,
-      overdue: daysRemaining < 0,
-      urgent: daysRemaining <= 30
-    });
-  }
-
-  return items.sort((a, b) => a.daysRemaining - b.daysRemaining);
-}
-
-/**
- * Summarizes fuel spend, volume, average unit price, and fill count grouped by fuel_brand.
- *
- * @param {import("../types.js").FuelLog[]} fuelLogs
- * @returns {Array<{brand: string, fillCount: number, totalLiters: number, totalCost: number, avgPricePerLiter: number}>}
- */
-export function summarizeFuelBrandBreakdown(fuelLogs) {
-  if (!Array.isArray(fuelLogs) || fuelLogs.length === 0) return [];
-
-  /** @type {Map<string, {brand: string, fillCount: number, totalLiters: number, totalCost: number}>} */
-  const map = new Map();
-
-  for (const log of fuelLogs) {
-    const brand = String(log.fuel_brand || "BBM").trim() || "BBM";
-    const liters = Number(log.liters) || 0;
-    const cost = Number(log.total_cost) || 0;
-    if (liters <= 0 && cost <= 0) continue;
-
-    const current = map.get(brand) || {
-      brand,
-      fillCount: 0,
-      totalLiters: 0,
-      totalCost: 0
-    };
-    current.fillCount += 1;
-    current.totalLiters += liters;
-    current.totalCost += cost;
-    map.set(brand, current);
-  }
-
-  return [...map.values()]
-    .map((item) => ({
-      brand: item.brand,
-      fillCount: item.fillCount,
-      totalLiters: Number(item.totalLiters.toFixed(2)),
-      totalCost: Math.round(item.totalCost),
-      avgPricePerLiter:
-        item.totalLiters > 0 ? Math.round(item.totalCost / item.totalLiters) : 0
-    }))
-    .sort((a, b) => b.totalCost - a.totalCost);
-}
+  const warning = detectOdometerAnomaly(
+    [{ id: "f1", logged_at: "2026-11-10", odometer_km: 10500 }],
+    10400,
+    "2026-11-12"
+  );
+  assert.ok(warning && warning.includes("lebih kecil"));
+});

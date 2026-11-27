@@ -1,15 +1,16 @@
 {
   "name": "Vehicle Logbook",
   "short_name": "VehicleLog",
-  "description": "Catatan konsumsi BBM, odometer, dan biaya servis kendaraan.",
-  "start_url": "/",
+  "description": "Pencatat konsumsi BBM, efisiensi km/L, dan riwayat servis kendaraan.",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f8fafc",
-  "theme_color": "#0f172a",
+  "theme_color": "#0284c7",
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230f172a'/%3E%3Cpath d='M18 38h28l-4-12H22l-4 12zm4 0v6m20-6v6' stroke='%2338bdf8' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
-      "sizes": "64x64",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%230284c7'/%3E%3Ctext x='96' y='118' font-family='sans-serif' font-size='84' font-weight='bold' text-anchor='middle' fill='white'%3EVL%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
       "type": "image/svg+xml"
     }
   ]

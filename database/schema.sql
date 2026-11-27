@@ -300,3 +300,129 @@ SET
   sort_order = EXCLUDED.sort_order,
   is_active = EXCLUDED.is_active,
   updated_at = NOW();
+
+  CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- 1. Tabel Kendaraan
+CREATE TABLE IF NOT EXISTS public.vehicles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  plate_number TEXT,
+  brand_model TEXT,
+  fuel_type TEXT NOT NULL DEFAULT 'Pertamax',
+  tank_capacity_liters NUMERIC(6, 2) NOT NULL DEFAULT 3.7,
+  initial_odometer_km NUMERIC(10, 1) NOT NULL DEFAULT 0,
+  tax_due_date DATE,
+  plate_due_date DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 2. Tabel Catatan Pengisian BBM
+CREATE TABLE IF NOT EXISTS public.fuel_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  vehicle_id UUID NOT NULL REFERENCES public.vehicles(id) ON DELETE CASCADE,
+  logged_at DATE NOT NULL,
+  odometer_km NUMERIC(10, 1) NOT NULL CHECK (odometer_km >= 0),
+  liters NUMERIC(8, 3) NOT NULL CHECK (liters > 0),
+  price_per_liter NUMERIC(10, 2) NOT NULL CHECK (price_per_liter > 0),
+  total_cost NUMERIC(12, 2) NOT NULL CHECK (total_cost >= 0),
+  fuel_brand TEXT NOT NULL DEFAULT 'Pertamax',
+  station_name TEXT,
+  is_full_tank BOOLEAN NOT NULL DEFAULT TRUE,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 3. Tabel Catatan Servis & Perawatan
+CREATE TABLE IF NOT EXISTS public.maintenance_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  vehicle_id UUID NOT NULL REFERENCES public.vehicles(id) ON DELETE CASCADE,
+  logged_at DATE NOT NULL,
+  odometer_km NUMERIC(10, 1) NOT NULL CHECK (odometer_km >= 0),
+  category TEXT NOT NULL DEFAULT 'other',
+  title TEXT NOT NULL,
+  workshop_name TEXT,
+  total_cost NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (total_cost >= 0),
+  next_due_km NUMERIC(10, 1),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 4. Tabel Referensi Harga BBM
+CREATE TABLE IF NOT EXISTS public.fuel_prices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand TEXT NOT NULL,
+  product_name TEXT NOT NULL UNIQUE,
+  ron INTEGER,
+  price_per_liter NUMERIC(10, 2) NOT NULL CHECK (price_per_liter > 0),
+  sort_order INTEGER NOT NULL DEFAULT 100,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_vehicles_user_id ON public.vehicles(user_id);
+CREATE INDEX IF NOT EXISTS idx_fuel_logs_vehicle_date ON public.fuel_logs(vehicle_id, logged_at DESC, odometer_km DESC);
+CREATE INDEX IF NOT EXISTS idx_maint_logs_vehicle_date ON public.maintenance_logs(vehicle_id, logged_at DESC, odometer_km DESC);
+
+-- RLS Policies
+ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fuel_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.maintenance_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fuel_prices ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "vehicles_owner_all" ON public.vehicles;
+CREATE POLICY "vehicles_owner_all" ON public.vehicles
+  FOR ALL TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "fuel_logs_owner_all" ON public.fuel_logs;
+CREATE POLICY "fuel_logs_owner_all" ON public.fuel_logs
+  FOR ALL TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "maintenance_logs_owner_all" ON public.maintenance_logs;
+CREATE POLICY "maintenance_logs_owner_all" ON public.maintenance_logs
+  FOR ALL TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "fuel_prices_select_authenticated" ON public.fuel_prices;
+CREATE POLICY "fuel_prices_select_authenticated" ON public.fuel_prices
+  FOR SELECT TO authenticated
+  USING (true);
+
+-- Seed Harga BBM
+INSERT INTO public.fuel_prices (brand, product_name, ron, price_per_liter, sort_order, is_active)
+VALUES
+  ('Pertamina', 'Pertalite', 90, 10000, 10, true),
+  ('Pertamina', 'Pertamax', 92, 12100, 20, true),
+  ('Pertamina', 'Pertamax Green 95', 95, 13150, 30, true),
+  ('Pertamina', 'Pertamax Turbo', 98, 13500, 40, true),
+  ('Pertamina', 'Bio Solar', NULL, 6800, 50, true),
+  ('Pertamina', 'Dexlite', NULL, 13050, 60, true),
+  ('Pertamina', 'Pertamina Dex', NULL, 13450, 70, true),
+  ('Shell', 'Shell Super', 92, 12290, 80, true),
+  ('Shell', 'Shell V-Power', 95, 13340, 90, true),
+  ('Shell', 'Shell V-Power Nitro+', 98, 13570, 100, true),
+  ('Shell', 'Shell V-Power Diesel', NULL, 13900, 110, true),
+  ('BP', 'BP 92', 92, 12290, 120, true),
+  ('BP', 'BP Ultimate', 95, 13340, 130, true),
+  ('BP', 'BP Ultimate Diesel', NULL, 13900, 140, true),
+  ('Vivo', 'Revvo 90', 90, 11900, 150, true),
+  ('Vivo', 'Revvo 92', 92, 12200, 160, true),
+  ('Vivo', 'Revvo 95', 95, 13200, 170, true)
+ON CONFLICT (product_name) DO UPDATE
+SET
+  brand = EXCLUDED.brand,
+  ron = EXCLUDED.ron,
+  price_per_liter = EXCLUDED.price_per_liter,
+  sort_order = EXCLUDED.sort_order,
+  is_active = EXCLUDED.is_active,
+  updated_at = NOW();

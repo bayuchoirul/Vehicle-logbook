@@ -1,24 +1,18 @@
 /**
- * Safe DOM manipulation, modal lifecycle, and toast notification helpers.
- */
-
-/**
- * @template {Element} T
  * @param {string} selector
  * @param {ParentNode} [root=document]
- * @returns {T | null}
+ * @returns {Element | null}
  */
 export function qs(selector, root = document) {
   return root.querySelector(selector);
 }
 
 /**
- * Escapes HTML special characters to prevent XSS in dynamic templates.
- * @param {unknown} raw
+ * @param {unknown} value
  * @returns {string}
  */
-export function escapeHtml(raw) {
-  return String(raw ?? "")
+export function escapeHtml(value) {
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -27,42 +21,6 @@ export function escapeHtml(raw) {
 }
 
 /**
- * Displays a non-blocking toast notification at the bottom-right corner.
- * @param {string} message
- * @param {'success'|'error'|'info'} [type='info']
- */
-export function showToast(message, type = "info") {
-  let container = document.getElementById("toast-container");
-  if (!container) {
-    container = document.createElement("div");
-    container.id = "toast-container";
-    container.className =
-      "fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0";
-    document.body.appendChild(container);
-  }
-
-  const colorClasses = {
-    success: "bg-emerald-600 text-white border-emerald-500",
-    error: "bg-rose-600 text-white border-rose-500",
-    info: "bg-slate-800 text-white border-slate-700"
-  };
-
-  const toast = document.createElement("div");
-  toast.className = `pointer-events-auto rounded-xl border px-4 py-3 text-sm font-medium shadow-lg transition-all duration-200 ${
-    colorClasses[type] || colorClasses.info
-  }`;
-  toast.textContent = message;
-  container.appendChild(toast);
-
-  const duration = type === "error" ? 6500 : 3400;
-  window.setTimeout(() => {
-    toast.classList.add("opacity-0", "translate-y-1");
-    window.setTimeout(() => toast.remove(), 220);
-  }, duration);
-}
-
-/**
- * Toggles loading state on a submit button while preserving original label.
  * @param {HTMLButtonElement | null} button
  * @param {boolean} isLoading
  * @param {string} [loadingText="Menyimpan..."]
@@ -70,39 +28,30 @@ export function showToast(message, type = "info") {
 export function setButtonLoading(button, isLoading, loadingText = "Menyimpan...") {
   if (!button) return;
   if (isLoading) {
-    if (!button.dataset.originalHtml) {
-      button.dataset.originalHtml = button.innerHTML;
+    if (!button.dataset.originalText) {
+      button.dataset.originalText = button.textContent || "";
     }
     button.disabled = true;
-    button.classList.add("opacity-70", "cursor-not-allowed");
     button.textContent = loadingText;
   } else {
     button.disabled = false;
-    button.classList.remove("opacity-70", "cursor-not-allowed");
-    if (button.dataset.originalHtml) {
-      button.innerHTML = button.dataset.originalHtml;
+    if (button.dataset.originalText) {
+      button.textContent = button.dataset.originalText;
     }
   }
 }
 
 /**
- * Opens a modal element by ID.
  * @param {string} modalId
  */
 export function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (!modal) return;
-  modal.querySelectorAll("[data-modal-error]").forEach((el) => {
-    el.classList.add("hidden");
-    el.textContent = "";
-  });
   modal.classList.remove("hidden");
   modal.classList.add("flex");
-  document.body.classList.add("overflow-hidden");
 }
 
 /**
- * Closes a modal element by ID.
  * @param {string} modalId
  */
 export function closeModal(modalId) {
@@ -110,50 +59,79 @@ export function closeModal(modalId) {
   if (!modal) return;
   modal.classList.add("hidden");
   modal.classList.remove("flex");
-  document.body.classList.remove("overflow-hidden");
 }
 
 /**
- * Displays or clears an inline error banner inside a modal.
  * @param {string} modalId
  * @param {string} message
  */
 export function setModalError(modalId, message) {
   const modal = document.getElementById(modalId);
   if (!modal) return;
-  const errorBox = modal.querySelector("[data-modal-error]");
-  if (!errorBox) return;
+  const errBox = modal.querySelector("[data-modal-error]");
+  if (!errBox) return;
+
   if (!message) {
-    errorBox.classList.add("hidden");
-    errorBox.textContent = "";
-    return;
+    errBox.classList.add("hidden");
+    errBox.textContent = "";
+  } else {
+    errBox.textContent = message;
+    errBox.classList.remove("hidden");
   }
-  errorBox.classList.remove("hidden");
-  errorBox.textContent = message;
 }
 
-/**
- * Binds standard close triggers ([data-close-modal], backdrop click, Escape key) for all modals.
- */
 export function bindModalDismissHandlers() {
-  document.addEventListener("click", (event) => {
-    const target = /** @type {HTMLElement} */ (event.target);
-    const closeBtn = target.closest("[data-close-modal]");
-    if (closeBtn) {
-      const modalId = closeBtn.getAttribute("data-close-modal");
-      if (modalId) closeModal(modalId);
-      return;
-    }
-    if (target.dataset && target.dataset.modalBackdrop === "true") {
-      closeModal(target.id);
-    }
+  document.querySelectorAll("[data-close-modal]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-close-modal");
+      if (targetId) closeModal(targetId);
+    });
+  });
+
+  document.querySelectorAll("[data-modal-backdrop]").forEach((backdrop) => {
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop && backdrop.id) {
+        closeModal(backdrop.id);
+      }
+    });
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      document.querySelectorAll('[data-modal-backdrop="true"]:not(.hidden)').forEach((el) => {
-        closeModal(el.id);
+      document.querySelectorAll("[data-modal-backdrop]:not(.hidden)").forEach((m) => {
+        if (m.id) closeModal(m.id);
       });
     }
   });
+}
+
+/**
+ * @param {string} message
+ * @param {"success" | "error" | "info"} [type="info"]
+ */
+export function showToast(message, type = "info") {
+  let container = document.getElementById("toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toast-container";
+    container.className = "fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm";
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement("div");
+  const palette =
+    type === "error"
+      ? "border-rose-200 bg-rose-600 text-white"
+      : type === "success"
+        ? "border-emerald-200 bg-emerald-600 text-white"
+        : "border-slate-700 bg-slate-900 text-white";
+
+  toast.className = `rounded-xl border px-4 py-3 text-sm font-medium shadow-lg transition-all ${palette}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("opacity-0", "translate-y-1");
+    setTimeout(() => toast.remove(), 250);
+  }, 3200);
 }
