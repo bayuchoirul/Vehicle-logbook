@@ -20,7 +20,7 @@ export const DEFAULT_FUEL_PRICES = [
 ];
 
 async function getCurrentUserId() {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) {
     throw new Error("Sesi login tidak valid. Silakan masuk ulang.");
@@ -33,7 +33,7 @@ async function getCurrentUserId() {
  */
 export async function listFuelPrices() {
   try {
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from("fuel_prices")
       .select("id, brand, product_name, ron, price_per_liter, sort_order, is_active")
@@ -53,7 +53,7 @@ export async function listFuelPrices() {
  * @returns {Promise<import("../types.js").Vehicle[]>}
  */
 export async function listVehicles() {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("vehicles")
     .select("*")
@@ -69,7 +69,7 @@ export async function listVehicles() {
  */
 export async function createVehicle(payload) {
   const userId = await getCurrentUserId();
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
 
   const name = String(payload.name || "").trim();
   if (!name) throw new Error("Nama kendaraan wajib diisi.");
@@ -100,7 +100,7 @@ export async function createVehicle(payload) {
  * @returns {Promise<import("../types.js").Vehicle>}
  */
 export async function updateVehicle(vehicleId, updates) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("vehicles")
     .update({
@@ -120,7 +120,7 @@ export async function updateVehicle(vehicleId, updates) {
  * @returns {Promise<import("../types.js").FuelLog[]>}
  */
 export async function listFuelLogs(vehicleId) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("fuel_logs")
     .select("*")
@@ -138,7 +138,7 @@ export async function listFuelLogs(vehicleId) {
  */
 export async function createFuelLog(payload) {
   const userId = await getCurrentUserId();
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
 
   const totalCost = Number(payload.total_cost);
   const pricePerLiter = Number(payload.price_per_liter);
@@ -178,7 +178,7 @@ export async function createFuelLog(payload) {
  * @param {Partial<import("../types.js").FuelLog>} payload
  */
 export async function updateFuelLog(id, payload) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const totalCost = Number(payload.total_cost);
   const pricePerLiter = Number(payload.price_per_liter);
   const liters = calculateLitersFromCost(totalCost, pricePerLiter);
@@ -208,7 +208,7 @@ export async function updateFuelLog(id, payload) {
  * @param {string} id
  */
 export async function deleteFuelLog(id) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { error } = await supabase.from("fuel_logs").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
@@ -218,7 +218,7 @@ export async function deleteFuelLog(id) {
  * @returns {Promise<import("../types.js").MaintenanceLog[]>}
  */
 export async function listMaintenanceLogs(vehicleId) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("maintenance_logs")
     .select("*")
@@ -236,7 +236,7 @@ export async function listMaintenanceLogs(vehicleId) {
  */
 export async function createMaintenanceLog(payload) {
   const userId = await getCurrentUserId();
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
 
   const title = String(payload.title || "").trim();
   if (!title) throw new Error("Judul / pekerjaan servis wajib diisi.");
@@ -267,7 +267,7 @@ export async function createMaintenanceLog(payload) {
  * @param {Partial<import("../types.js").MaintenanceLog>} payload
  */
 export async function updateMaintenanceLog(id, payload) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("maintenance_logs")
     .update({
@@ -292,7 +292,7 @@ export async function updateMaintenanceLog(id, payload) {
  * @param {string} id
  */
 export async function deleteMaintenanceLog(id) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { error } = await supabase.from("maintenance_logs").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
