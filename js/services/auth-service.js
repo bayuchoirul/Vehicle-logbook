@@ -35,7 +35,7 @@ function normalizeAuthError(error, fallback) {
  * @param {string} password
  */
 export async function signInWithPassword(email, password) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase.auth.signInWithPassword({
     email: String(email || "").trim(),
     password: String(password || "")
@@ -49,7 +49,7 @@ export async function signInWithPassword(email, password) {
  * @param {string} password
  */
 export async function signUpWithEmail(email, password) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const redirectTo = `${window.location.origin}/login.html`;
   const { data, error } = await supabase.auth.signUp({
     email: String(email || "").trim(),
@@ -64,7 +64,7 @@ export async function signUpWithEmail(email, password) {
  * @param {string} email
  */
 export async function sendPasswordResetEmail(email) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const redirectTo = `${window.location.origin}/login.html`;
   const { error } = await supabase.auth.resetPasswordForEmail(String(email || "").trim(), {
     redirectTo
@@ -76,7 +76,7 @@ export async function sendPasswordResetEmail(email) {
  * @param {string} newPassword
  */
 export async function updateUserPassword(newPassword) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase.auth.updateUser({
     password: String(newPassword || "")
   });
@@ -87,13 +87,13 @@ export async function updateUserPassword(newPassword) {
 /**
  * @param {(event: string, session: any) => void} callback
  */
-export function onAuthStateChange(callback) {
-  const supabase = getSupabaseClient();
+export async function onAuthStateChange(callback) {
+  const supabase = await getSupabaseClient();
   return supabase.auth.onAuthStateChange(callback);
 }
 
 export async function getSession() {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase.auth.getSession();
   if (error) throw normalizeAuthError(error, "Gagal memeriksa sesi login.");
   return data.session;
@@ -133,7 +133,7 @@ export async function redirectIfAuthenticated(dashboardPath = "./index.html") {
  * @param {string} [loginPath="./login.html"]
  */
 export async function signOut(loginPath = "./login.html") {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   await supabase.auth.signOut();
   window.location.replace(loginPath);
 }

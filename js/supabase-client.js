@@ -1,39 +1,46 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-/** @type {import("@supabase/supabase-js").SupabaseClient | null} */
+/** @type {import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm").SupabaseClient | null} */
 let cachedClient = null;
 
 /**
- * Resolves Supabase URL & anon key from window.__APP_CONFIG__ (importing ./config.js if needed)
+ * Resolves Supabase URL & anon key from window.__APP_CONFIG__ or ./config.js
  * and returns a singleton Supabase client.
  *
- * @returns {Promise<import("@supabase/supabase-js").SupabaseClient>}
+ * @returns {Promise<import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm").SupabaseClient>}
  */
 export async function getSupabaseClient() {
   if (cachedClient) return cachedClient;
 
-  let cfg =
-    (typeof window !== "undefined" && window.__APP_CONFIG__) ||
-    (typeof globalThis !== "undefined" && globalThis.__APP_CONFIG__) ||
-    null;
-
-  if (!cfg || (!cfg.SUPABASE_URL && !cfg.supabaseUrl)) {
-    try {
-      await import("./config.js");
-    } catch {
-      // Abaikan jika config.js belum ter-generate
-    }
-    cfg =
-      (typeof window !== "undefined" && window.__APP_CONFIG__) ||
-      (typeof globalThis !== "undefined" && globalThis.__APP_CONFIG__) ||
-      {};
+  let importedCfg = {};
+  try {
+    const mod = await import("./config.js");
+    importedCfg = mod?.SUPABASE_CONFIG || mod?.default || {};
+  } catch {
+    // Abaikan jika config.js belum ter-generate
   }
 
+  const globalCfg =
+    (typeof window !== "undefined" && /** @type {any} */ (window).__APP_CONFIG__) ||
+    (typeof globalThis !== "undefined" && /** @type {any} */ (globalThis).__APP_CONFIG__) ||
+    {};
+
   const supabaseUrl = String(
-    cfg.SUPABASE_URL || cfg.supabaseUrl || cfg.VITE_SUPABASE_URL || ""
+    importedCfg.url ||
+      importedCfg.SUPABASE_URL ||
+      globalCfg.SUPABASE_URL ||
+      globalCfg.supabaseUrl ||
+      globalCfg.VITE_SUPABASE_URL ||
+      ""
   ).trim();
+
   const supabaseAnonKey = String(
-    cfg.SUPABASE_ANON_KEY || cfg.supabaseAnonKey || cfg.VITE_SUPABASE_ANON_KEY || ""
+    importedCfg.anonKey ||
+      importedCfg.SUPABASE_ANON_KEY ||
+      globalCfg.SUPABASE_ANON_KEY ||
+      globalCfg.supabaseAnonKey ||
+      globalCfg.VITE_SUPABASE_ANON_KEY ||
+      ""
   ).trim();
 
   if (!supabaseUrl || !supabaseAnonKey) {

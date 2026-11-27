@@ -1,12 +1,39 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
+const envPath = path.resolve(".env");
+if (fs.existsSync(envPath)) {
+  const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
+
+const supabaseUrl = (
+  process.env.SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  ""
+).trim();
+
 const supabaseAnonKey = (
   process.env.SUPABASE_ANON_KEY ||
   process.env.VITE_SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   ""
 ).trim();
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn(
+    "[build:config] WARNING: SUPABASE_URL atau SUPABASE_ANON_KEY kosong! Pastikan keduanya diatur di Vercel Project Settings -> Environment Variables."
+  );
+}
 
 const outDir = path.resolve("js");
 fs.mkdirSync(outDir, { recursive: true });
@@ -16,7 +43,19 @@ export const SUPABASE_CONFIG = {
   url: ${JSON.stringify(supabaseUrl)},
   anonKey: ${JSON.stringify(supabaseAnonKey)}
 };
+
+if (typeof window !== "undefined") {
+  window.__APP_CONFIG__ = {
+    ...(window.__APP_CONFIG__ || {}),
+    SUPABASE_URL: ${JSON.stringify(supabaseUrl)},
+    SUPABASE_ANON_KEY: ${JSON.stringify(supabaseAnonKey)}
+  };
+}
 `;
 
 fs.writeFileSync(path.join(outDir, "config.js"), content, "utf8");
-console.log("[build:config] Generated js/config.js");
+console.log(
+  `[build:config] Generated js/config.js (url=${supabaseUrl ? "SET" : "EMPTY"}, anonKey=${
+    supabaseAnonKey ? "SET" : "EMPTY"
+  })`
+);
