@@ -93,3 +93,36 @@ export async function signOut(loginPath = "./login.html") {
   const target = new URL(loginPath, window.location.href);
   window.location.replace(target.toString());
 }
+
+/**
+ * Mengirim tautan reset kata sandi ke email terdaftar.
+ * @param {string} email
+ */
+export async function sendPasswordReset(email) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/login`
+  });
+  if (error) throw error;
+}
+
+/**
+ * Memperbarui kata sandi pengguna saat sesi recovery aktif.
+ * @param {string} newPassword
+ */
+export async function updateUserPassword(newPassword) {
+  const { data, error } = await supabase.auth.updateUser({
+    password: newPassword
+  });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Mendengarkan perubahan event autentikasi Supabase (seperti PASSWORD_RECOVERY).
+ * @param {(event: string, session: unknown) => void} callback
+ */
+export function onAuthStateChange(callback) {
+  return supabase.auth.onAuthStateChange((event, session) => {
+    callback(event, session);
+  });
+}
