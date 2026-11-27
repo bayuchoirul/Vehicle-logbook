@@ -1,90 +1,46 @@
-import { getSupabaseClient } from "./supabase-client.js";
+import { getSupabaseClient } from "../supabase-client.js";
+import { getCurrentUser } from "./auth-service.js";
 import { calculateLitersFromCost } from "../utils/metrics.js";
 
 /**
- * Fallback Indonesian fuel price catalog (Jabodetabek / Jawa) if `fuel_prices` is unavailable.
- * @type {ReadonlyArray<import("../types.js").FuelPriceOption>}
+ * Fallback fuel price reference list if fuel_prices table is empty or unreachable.
+ * @type {import("../types.js").FuelPriceOption[]}
  */
-export const DEFAULT_FUEL_PRICES = Object.freeze([
-  { brand: "Pertamina", product_name: "Pertamax", spec_label: "RON 92", price_per_liter: 12100, sort_order: 10 },
-  { brand: "Pertamina", product_name: "Pertalite", spec_label: "RON 90", price_per_liter: 10000, sort_order: 20 },
-  { brand: "Pertamina", product_name: "Pertamax Green 95", spec_label: "RON 95", price_per_liter: 13150, sort_order: 30 },
-  { brand: "Pertamina", product_name: "Pertamax Turbo", spec_label: "RON 98", price_per_liter: 13500, sort_order: 40 },
-  { brand: "Pertamina", product_name: "Dexlite", spec_label: "CN 51", price_per_liter: 13050, sort_order: 50 },
-  { brand: "Pertamina", product_name: "Pertamina Dex", spec_label: "CN 53", price_per_liter: 13400, sort_order: 60 },
-  { brand: "Shell", product_name: "Shell Super", spec_label: "RON 92", price_per_liter: 12290, sort_order: 70 },
-  { brand: "Shell", product_name: "Shell V-Power", spec_label: "RON 95", price_per_liter: 13340, sort_order: 80 },
-  { brand: "Shell", product_name: "Shell V-Power Nitro+", spec_label: "RON 98", price_per_liter: 13570, sort_order: 90 },
-  { brand: "Shell", product_name: "Shell V-Power Diesel", spec_label: "CN 51", price_per_liter: 13900, sort_order: 100 },
-  { brand: "BP", product_name: "BP 92", spec_label: "RON 92", price_per_liter: 12290, sort_order: 110 },
-  { brand: "BP", product_name: "BP Ultimate", spec_label: "RON 95", price_per_liter: 13340, sort_order: 120 },
-  { brand: "Vivo", product_name: "Revvo 90", spec_label: "RON 90", price_per_liter: 11900, sort_order: 130 },
-  { brand: "Vivo", product_name: "Revvo 92", spec_label: "RON 92", price_per_liter: 12200, sort_order: 140 },
-  { brand: "Vivo", product_name: "Revvo 95", spec_label: "RON 95", price_per_liter: 13200, sort_order: 150 }
-]);
+export const DEFAULT_FUEL_PRICES = [
+  { brand: "Pertamina", product_name: "Pertalite", ron: 90, price_per_liter: 10000, sort_order: 10 },
+  { brand: "Pertamina", product_name: "Pertamax", ron: 92, price_per_liter: 12100, sort_order: 20 },
+  { brand: "Pertamina", product_name: "Pertamax Green 95", ron: 95, price_per_liter: 13150, sort_order: 30 },
+  { brand: "Pertamina", product_name: "Pertamax Turbo", ron: 98, price_per_liter: 13500, sort_order: 40 },
+  { brand: "Shell", product_name: "Shell Super", ron: 92, price_per_liter: 12290, sort_order: 50 },
+  { brand: "Shell", product_name: "Shell V-Power", ron: 95, price_per_liter: 13340, sort_order: 60 },
+  { brand: "Shell", product_name: "Shell V-Power Nitro+", ron: 98, price_per_liter: 13570, sort_order: 70 },
+  { brand: "BP", product_name: "BP 92", ron: 92, price_per_liter: 12290, sort_order: 80 },
+  { brand: "BP", product_name: "BP Ultimate", ron: 95, price_per_liter: 13340, sort_order: 90 },
+  { brand: "Vivo", product_name: "Revvo 90", ron: 90, price_per_liter: 11900, sort_order: 100 },
+  { brand: "Vivo", product_name: "Revvo 92", ron: 92, price_per_liter: 12290, sort_order: 110 },
+  { brand: "Vivo", product_name: "Revvo 95", ron: 95, price_per_liter: 13340, sort_order: 120 }
+];
 
 /**
- * Parses numeric input safely, supporting both dot and comma decimal separators.
- * @param {unknown} raw
- * @param {number} [fallback=NaN]
- * @returns {number}
- */
-function parseNumericInput(raw, fallback = Number.NaN) {
-  if (raw === null || raw === undefined || raw === "") return fallback;
-  if (typeof raw === "number") return raw;
-  const normalized = String(raw).trim().replace(",", ".");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-/**
- * Formats PostgREST / Supabase database errors with diagnostic details.
- * @param {string} prefix
- * @param {{ message?: string, details?: string | null, hint?: string | null, code?: string }} error
- * @returns {string}
- */
-function formatSupabaseError(prefix, error) {
-  const parts = [error.message || "Unknown database error"];
-  if (error.details) parts.push(error.details);
-  if (error.hint) parts.push(`Hint: ${error.hint}`);
-  if (error.code) parts.push(`[${error.code}]`);
-  return `${prefix}: ${parts.join(" — ")}`;
-}
-
-/**
- * Resolves the currently authenticated user ID.
- * @returns {Promise<string>}
- */
-async function getAuthenticatedUserId() {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data?.user) {
-    throw new Error("Sesi login tidak valid. Silakan login kembali.");
-  }
-  return data.user.id;
-}
-
-/**
- * Fetches active Indonesian fuel prices from `public.fuel_prices` with safe local fallback.
+ * Fetches active Indonesia retail fuel prices from Supabase, falling back to local defaults.
  * @returns {Promise<import("../types.js").FuelPriceOption[]>}
  */
 export async function listFuelPrices() {
   try {
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from("fuel_prices")
-      .select("id, brand, product_name, spec_label, price_per_liter, is_active, sort_order")
+      .select("id, brand, product_name, ron, price_per_liter, sort_order, is_active")
       .eq("is_active", true)
-      .order("sort_order", { ascending: true })
-      .order("product_name", { ascending: true });
+      .order("sort_order", { ascending: true });
 
-    if (error || !data || data.length === 0) {
+    if (error || !Array.isArray(data) || data.length === 0) {
       return [...DEFAULT_FUEL_PRICES];
     }
 
     return data.map((row) => ({
       ...row,
-      price_per_liter: Number(row.price_per_liter)
+      price_per_liter: Number(row.price_per_liter) || 0
     }));
   } catch {
     return [...DEFAULT_FUEL_PRICES];
@@ -92,88 +48,96 @@ export async function listFuelPrices() {
 }
 
 /**
- * Fetches all vehicles owned by the authenticated user.
  * @returns {Promise<import("../types.js").Vehicle[]>}
  */
 export async function listVehicles() {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("vehicles")
     .select("*")
     .order("created_at", { ascending: true });
 
-  if (error) throw new Error(formatSupabaseError("Gagal memuat kendaraan", error));
+  if (error) throw new Error(`Gagal memuat daftar kendaraan: ${error.message}`);
   return data || [];
 }
 
 /**
- * Creates a new vehicle record.
  * @param {Partial<import("../types.js").Vehicle>} payload
  * @returns {Promise<import("../types.js").Vehicle>}
  */
 export async function createVehicle(payload) {
-  const userId = await getAuthenticatedUserId();
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Sesi login tidak ditemukan.");
+
   const name = String(payload.name || "").trim();
   if (!name) throw new Error("Nama kendaraan wajib diisi.");
 
-  const initialOdo = parseNumericInput(payload.initial_odometer_km, 0);
-  const currentOdo = parseNumericInput(payload.current_odometer_km, initialOdo);
-  const tankCapacity = parseNumericInput(payload.tank_capacity_liters, 3.7);
+  const row = {
+    user_id: user.id,
+    name,
+    plate_number: String(payload.plate_number || "").trim(),
+    brand_model: String(payload.brand_model || "").trim(),
+    fuel_type: String(payload.fuel_type || "Pertamax").trim() || "Pertamax",
+    tank_capacity_liters: Number(payload.tank_capacity_liters ?? 3.7),
+    initial_odometer_km: Number(payload.initial_odometer_km ?? 0),
+    tax_due_date: payload.tax_due_date ? String(payload.tax_due_date).trim() : null,
+    plate_due_date: payload.plate_due_date ? String(payload.plate_due_date).trim() : null
+  };
 
-  if (!Number.isFinite(initialOdo) || initialOdo < 0) {
-    throw new Error("Odometer awal harus berupa angka >= 0.");
+  if (row.tank_capacity_liters <= 0) {
+    throw new Error("Kapasitas tangki harus lebih besar dari 0 liter.");
   }
-  if (!Number.isFinite(tankCapacity) || tankCapacity <= 0) {
-    throw new Error("Kapasitas tangki harus lebih dari 0 liter.");
+  if (row.initial_odometer_km < 0) {
+    throw new Error("Odometer awal tidak boleh bernilai negatif.");
   }
 
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("vehicles")
-    .insert({
-      user_id: userId,
-      name,
-      plate_number: String(payload.plate_number || "").trim(),
-      brand_model: String(payload.brand_model || "").trim(),
-      fuel_type: String(payload.fuel_type || "Pertamax").trim(),
-      tank_capacity_liters: tankCapacity,
-      initial_odometer_km: initialOdo,
-      current_odometer_km: Math.max(initialOdo, currentOdo)
-    })
+    .insert(row)
     .select()
     .single();
 
-  if (error) throw new Error(formatSupabaseError("Gagal menyimpan kendaraan", error));
+  if (error) throw new Error(`Gagal menyimpan kendaraan: ${error.message}`);
   return data;
 }
 
 /**
- * Updates vehicle metadata.
- * @param {string} vehicleId
- * @param {Partial<import("../types.js").Vehicle>} updates
- * @returns {Promise<import("../types.js").Vehicle>}
+ * @param {string} id
+ * @param {Partial<import("../types.js").Vehicle>} patch
  */
-export async function updateVehicle(vehicleId, updates) {
-  const supabase = getSupabaseClient();
+export async function updateVehicle(id, patch) {
+  const cleanPatch = { ...patch };
+  if ("tax_due_date" in cleanPatch) {
+    cleanPatch.tax_due_date = cleanPatch.tax_due_date
+      ? String(cleanPatch.tax_due_date).trim()
+      : null;
+  }
+  if ("plate_due_date" in cleanPatch) {
+    cleanPatch.plate_due_date = cleanPatch.plate_due_date
+      ? String(cleanPatch.plate_due_date).trim()
+      : null;
+  }
+
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("vehicles")
-    .update(updates)
-    .eq("id", vehicleId)
+    .update(cleanPatch)
+    .eq("id", id)
     .select()
     .single();
 
-  if (error) throw new Error(formatSupabaseError("Gagal memperbarui kendaraan", error));
+  if (error) throw new Error(`Gagal memperbarui kendaraan: ${error.message}`);
   return data;
 }
 
 /**
- * Fetches fuel logs for a specific vehicle sorted chronologically (newest first).
  * @param {string} vehicleId
  * @returns {Promise<import("../types.js").FuelLog[]>}
  */
 export async function listFuelLogs(vehicleId) {
   if (!vehicleId) return [];
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("fuel_logs")
     .select("*")
@@ -181,110 +145,106 @@ export async function listFuelLogs(vehicleId) {
     .order("logged_at", { ascending: false })
     .order("odometer_km", { ascending: false });
 
-  if (error) throw new Error(formatSupabaseError("Gagal memuat catatan BBM", error));
+  if (error) throw new Error(`Gagal memuat catatan BBM: ${error.message}`);
   return data || [];
 }
 
 /**
- * Validates and creates a new fuel log entry from transaction total cost and price per liter.
  * @param {Partial<import("../types.js").FuelLog>} payload
  * @returns {Promise<import("../types.js").FuelLog>}
  */
 export async function createFuelLog(payload) {
-  const userId = await getAuthenticatedUserId();
-  if (!payload.vehicle_id) throw new Error("Kendaraan belum dipilih.");
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Sesi login tidak ditemukan.");
+  if (!payload.vehicle_id) throw new Error("Pilih kendaraan terlebih dahulu.");
 
-  const odometerKm = parseNumericInput(payload.odometer_km);
-  const pricePerLiter = parseNumericInput(payload.price_per_liter);
-  const parsedTotal = parseNumericInput(payload.total_cost);
-  const parsedLiters = parseNumericInput(payload.liters);
+  const odometer_km = Number(payload.odometer_km);
+  const price_per_liter = Number(payload.price_per_liter);
+  const explicitCost = Number(payload.total_cost);
+  const explicitLiters = Number(payload.liters);
 
-  if (!Number.isFinite(odometerKm) || odometerKm < 0) {
-    throw new Error("Odometer harus valid (>= 0 km).");
+  if (!Number.isFinite(odometer_km) || odometer_km < 0) {
+    throw new Error("Odometer harus berupa angka valid (>= 0).");
   }
-  if (!Number.isFinite(pricePerLiter) || pricePerLiter <= 0) {
-    throw new Error("Harga per liter harus lebih dari Rp 0.");
-  }
-
-  const totalCost =
-    Number.isFinite(parsedTotal) && parsedTotal > 0
-      ? Math.round(parsedTotal)
-      : Number.isFinite(parsedLiters) && parsedLiters > 0
-        ? Math.round(parsedLiters * pricePerLiter)
-        : 0;
-
-  if (totalCost <= 0) {
-    throw new Error("Total bayar transaksi harus lebih dari Rp 0.");
+  if (!Number.isFinite(price_per_liter) || price_per_liter <= 0) {
+    throw new Error("Harga per liter harus lebih besar dari 0.");
   }
 
-  const liters =
-    Number.isFinite(parsedLiters) && parsedLiters > 0
-      ? Number(parsedLiters.toFixed(3))
-      : calculateLitersFromCost(totalCost, pricePerLiter);
+  let total_cost = 0;
+  let liters = 0;
 
-  if (!Number.isFinite(liters) || liters <= 0) {
-    throw new Error("Volume liter hasil kalkulasi tidak valid.");
+  if (Number.isFinite(explicitCost) && explicitCost > 0) {
+    total_cost = Math.round(explicitCost);
+    liters = calculateLitersFromCost(total_cost, price_per_liter);
+  } else if (Number.isFinite(explicitLiters) && explicitLiters > 0) {
+    liters = Number(explicitLiters.toFixed(3));
+    total_cost = Math.round(liters * price_per_liter);
+  } else {
+    throw new Error("Total bayar (Rp) harus lebih besar dari 0.");
   }
 
-  const supabase = getSupabaseClient();
+  if (liters <= 0) {
+    throw new Error("Volume liter terhitung tidak valid. Periksa total bayar dan harga BBM.");
+  }
+
+  const row = {
+    user_id: user.id,
+    vehicle_id: payload.vehicle_id,
+    logged_at: payload.logged_at || new Date().toISOString().slice(0, 10),
+    odometer_km,
+    liters,
+    price_per_liter,
+    total_cost,
+    fuel_brand: String(payload.fuel_brand || "Pertamax").trim() || "Pertamax",
+    station_name: String(payload.station_name || "").trim(),
+    is_full_tank: payload.is_full_tank !== false,
+    notes: String(payload.notes || "").trim()
+  };
+
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("fuel_logs")
-    .insert({
-      user_id: userId,
-      vehicle_id: payload.vehicle_id,
-      logged_at: payload.logged_at || new Date().toISOString().slice(0, 10),
-      odometer_km: odometerKm,
-      liters,
-      price_per_liter: pricePerLiter,
-      total_cost: totalCost,
-      fuel_brand: String(payload.fuel_brand || "Pertamax").trim(),
-      station_name: String(payload.station_name || "").trim(),
-      is_full_tank: payload.is_full_tank !== false,
-      notes: String(payload.notes || "").trim()
-    })
+    .insert(row)
     .select()
     .single();
 
-  if (error) throw new Error(formatSupabaseError("Gagal menyimpan catatan BBM", error));
+  if (error) throw new Error(`Gagal menyimpan catatan BBM: ${error.message}`);
   return data;
 }
 
 /**
- * Updates an existing fuel log entry.
  * @param {string} id
- * @param {Partial<import("../types.js").FuelLog>} payload
+ * @param {Partial<import("../types.js").FuelLog>} patch
  */
-export async function updateFuelLog(id, payload) {
-  const supabase = getSupabaseClient();
+export async function updateFuelLog(id, patch) {
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("fuel_logs")
-    .update(payload)
+    .update(patch)
     .eq("id", id)
     .select()
     .single();
 
-  if (error) throw new Error(formatSupabaseError("Gagal memperbarui catatan BBM", error));
+  if (error) throw new Error(`Gagal memperbarui catatan BBM: ${error.message}`);
   return data;
 }
 
 /**
- * Deletes a fuel log entry by ID.
  * @param {string} id
  */
 export async function deleteFuelLog(id) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { error } = await supabase.from("fuel_logs").delete().eq("id", id);
-  if (error) throw new Error(formatSupabaseError("Gagal menghapus catatan BBM", error));
+  if (error) throw new Error(`Gagal menghapus catatan BBM: ${error.message}`);
 }
 
 /**
- * Fetches maintenance logs for a vehicle sorted chronologically (newest first).
  * @param {string} vehicleId
  * @returns {Promise<import("../types.js").MaintenanceLog[]>}
  */
 export async function listMaintenanceLogs(vehicleId) {
   if (!vehicleId) return [];
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("maintenance_logs")
     .select("*")
@@ -292,80 +252,83 @@ export async function listMaintenanceLogs(vehicleId) {
     .order("logged_at", { ascending: false })
     .order("odometer_km", { ascending: false });
 
-  if (error) throw new Error(formatSupabaseError("Gagal memuat catatan servis", error));
+  if (error) throw new Error(`Gagal memuat catatan servis: ${error.message}`);
   return data || [];
 }
 
 /**
- * Validates and creates a maintenance/service log entry.
  * @param {Partial<import("../types.js").MaintenanceLog>} payload
  * @returns {Promise<import("../types.js").MaintenanceLog>}
  */
 export async function createMaintenanceLog(payload) {
-  const userId = await getAuthenticatedUserId();
-  if (!payload.vehicle_id) throw new Error("Kendaraan belum dipilih.");
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Sesi login tidak ditemukan.");
+  if (!payload.vehicle_id) throw new Error("Pilih kendaraan terlebih dahulu.");
 
+  const odometer_km = Number(payload.odometer_km);
+  const total_cost = Number(payload.total_cost);
   const title = String(payload.title || "").trim();
-  if (!title) throw new Error("Judul pekerjaan servis wajib diisi.");
 
-  const odometerKm = parseNumericInput(payload.odometer_km);
-  const totalCost = parseNumericInput(payload.total_cost, 0);
-  const parsedNextDue = parseNumericInput(payload.next_due_km);
-  const nextDueKm = Number.isFinite(parsedNextDue) ? parsedNextDue : null;
-
-  if (!Number.isFinite(odometerKm) || odometerKm < 0) {
-    throw new Error("Odometer servis harus valid (>= 0 km).");
+  if (!title) throw new Error("Deskripsi servis / penggantian wajib diisi.");
+  if (!Number.isFinite(odometer_km) || odometer_km < 0) {
+    throw new Error("Odometer harus berupa angka valid (>= 0).");
   }
-  if (!Number.isFinite(totalCost) || totalCost < 0) {
-    throw new Error("Biaya servis tidak valid.");
+  if (!Number.isFinite(total_cost) || total_cost < 0) {
+    throw new Error("Biaya servis tidak boleh negatif.");
   }
 
-  const supabase = getSupabaseClient();
+  const nextDueRaw = payload.next_due_km;
+  const next_due_km =
+    nextDueRaw === "" || nextDueRaw === null || nextDueRaw === undefined
+      ? null
+      : Number(nextDueRaw);
+
+  const row = {
+    user_id: user.id,
+    vehicle_id: payload.vehicle_id,
+    logged_at: payload.logged_at || new Date().toISOString().slice(0, 10),
+    odometer_km,
+    category: payload.category || "other",
+    title,
+    workshop_name: String(payload.workshop_name || "").trim(),
+    total_cost,
+    next_due_km: Number.isFinite(next_due_km) ? next_due_km : null,
+    notes: String(payload.notes || "").trim()
+  };
+
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("maintenance_logs")
-    .insert({
-      user_id: userId,
-      vehicle_id: payload.vehicle_id,
-      logged_at: payload.logged_at || new Date().toISOString().slice(0, 10),
-      odometer_km: odometerKm,
-      category: payload.category || "other",
-      title,
-      workshop_name: String(payload.workshop_name || "").trim(),
-      total_cost: totalCost,
-      next_due_km: nextDueKm,
-      notes: String(payload.notes || "").trim()
-    })
+    .insert(row)
     .select()
     .single();
 
-  if (error) throw new Error(formatSupabaseError("Gagal menyimpan catatan servis", error));
+  if (error) throw new Error(`Gagal menyimpan catatan servis: ${error.message}`);
   return data;
 }
 
 /**
- * Updates an existing maintenance log entry.
  * @param {string} id
- * @param {Partial<import("../types.js").MaintenanceLog>} payload
+ * @param {Partial<import("../types.js").MaintenanceLog>} patch
  */
-export async function updateMaintenanceLog(id, payload) {
-  const supabase = getSupabaseClient();
+export async function updateMaintenanceLog(id, patch) {
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from("maintenance_logs")
-    .update(payload)
+    .update(patch)
     .eq("id", id)
     .select()
     .single();
 
-  if (error) throw new Error(formatSupabaseError("Gagal memperbarui catatan servis", error));
+  if (error) throw new Error(`Gagal memperbarui catatan servis: ${error.message}`);
   return data;
 }
 
 /**
- * Deletes a maintenance log entry by ID.
  * @param {string} id
  */
 export async function deleteMaintenanceLog(id) {
-  const supabase = getSupabaseClient();
+  const supabase = await getSupabaseClient();
   const { error } = await supabase.from("maintenance_logs").delete().eq("id", id);
-  if (error) throw new Error(formatSupabaseError("Gagal menghapus catatan servis", error));
+  if (error) throw new Error(`Gagal menghapus catatan servis: ${error.message}`);
 }

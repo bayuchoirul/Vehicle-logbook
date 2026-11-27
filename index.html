@@ -127,10 +127,10 @@
       <!-- Reminders & Monthly Spend -->
       <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-          <h2 class="text-sm font-bold text-slate-900">Pengingat Servis Berkala</h2>
-          <p class="mt-0.5 text-xs text-slate-500">Menampilkan komponen dengan sisa jarak &le; 500 km</p>
+          <h2 class="text-sm font-bold text-slate-900">Pengingat Servis &amp; Pajak</h2>
+          <p class="mt-0.5 text-xs text-slate-500">Jatuh tempo pajak STNK &amp; servis komponen (&le; 500 km)</p>
           <div id="service-reminders-list" class="mt-4 space-y-2.5">
-            <p class="text-sm text-slate-500">Memuat jadwal servis...</p>
+            <p class="text-sm text-slate-500">Memuat jadwal servis &amp; pajak...</p>
           </div>
         </article>
 
@@ -189,6 +189,16 @@
             <input name="initial_odometer_km" type="number" step="0.1" value="0" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
           </div>
         </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Jatuh Tempo Pajak Tahunan</label>
+            <input name="tax_due_date" type="date" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Jatuh Tempo Plat 5 Tahunan</label>
+            <input name="plate_due_date" type="date" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" data-close-modal="modal-add-vehicle" class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600">Batal</button>
           <button id="btn-submit-vehicle" type="submit" data-loading-text="Menyimpan..." class="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Simpan Kendaraan</button>
@@ -228,6 +238,16 @@
           <div>
             <label class="block text-xs font-semibold text-slate-700">Merek / Model</label>
             <input id="edit-vehicle-brand-model" name="brand_model" type="text" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Jatuh Tempo Pajak Tahunan</label>
+            <input id="edit-vehicle-tax-due" name="tax_due_date" type="date" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700">Jatuh Tempo Plat 5 Tahunan</label>
+            <input id="edit-vehicle-plate-due" name="plate_due_date" type="date" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
           </div>
         </div>
         <div class="flex justify-end gap-2 pt-2">

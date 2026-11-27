@@ -3,151 +3,77 @@ import assert from "node:assert/strict";
 import {
   calculateFuelEfficiencySeries,
   calculateLitersFromCost,
+  detectOdometerAnomaly,
   formatLiters,
-  summarizeVehicleMetrics
+  summarizeMonthlySpend,
+  summarizeServiceReminders,
+  summarizeTaxReminders,
+  summarizeVehicleTelemetry
 } from "../js/utils/metrics.js";
 
-test("calculateLitersFromCost computes accurate liters from transaction cost and price per liter", () => {
-  assert.equal(calculateLitersFromCost(22000, 10000), 2.2);
-  assert.equal(calculateLitersFromCost(35000, 12100), 2.893);
-  assert.equal(calculateLitersFromCost(36300, 12100), 3);
+test("calculateLitersFromCost derives exact liters from total rupiah and unit price", () => {
+  assert.equal(calculateLitersFromCost(22000, 12100), 1.818);
+  assert.equal(calculateLitersFromCost(30000, 10000), 3);
   assert.equal(calculateLitersFromCost(0, 12100), 0);
-  assert.equal(calculateLitersFromCost(35000, 0), 0);
+  assert.equal(calculateLitersFromCost(20000, 0), 0);
+  assert.equal(formatLiters(1.818), "1,82 L");
 });
 
-test("formatLiters consistently renders 2 decimal places without misleading 3-zero suffixes", () => {
-  assert.equal(formatLiters(2.2), "2,20 L");
-  assert.equal(formatLiters(0), "0,00 L");
-  assert.equal(formatLiters(2.893), "2,89 L");
-});
-
-test("calculateFuelEfficiencySeries computes accurate full-to-full km/L and Rp/km", () => {
+test("calculateFuelEfficiencySeries computes km/L across full-tank cycles and accumulates partial fills", () => {
   const logs = [
-    {
-      id: "1",
-      vehicle_id: "v1",
-      logged_at: "2026-11-01",
-      odometer_km: 10000,
-      liters: 3.1,
-      price_per_liter: 12100,
-      total_cost: 37510,
-      is_full_tank: true
-    },
-    {
-      id: "2",
-      vehicle_id: "v1",
-      logged_at: "2026-11-10",
-      odometer_km: 10150,
-      liters: 3.0,
-      price_per_liter: 12100,
-      total_cost: 36300,
-      is_full_tank: true
-    }
+    { id: "1", logged_at: "2026-11-01", odometer_km: 10000, liters: 3.1, total_cost: 37510, is_full_tank: true },
+    { id: "2", logged_at: "2026-11-05", odometer_km: 10080, liters: 1.5, total_cost: 18150, is_full_tank: false },
+    { id: "3", logged_at: "2026-11-10", odometer_km: 10180, liters: 2.5, total_cost: 30250, is_full_tank: true }
   ];
 
   const series = calculateFuelEfficiencySeries(logs);
   assert.equal(series.length, 1);
-  assert.equal(series[0].distance_km, 150);
-  assert.equal(series[0].km_per_liter, 50);
-  assert.equal(series[0].cost_per_km, 242);
+  assert.equal(series[0].distance_km, 180);
+  assert.equal(series[0].liters_used, 4);
+  assert.equal(series[0].km_per_liter, 45);
 });
 
-test("calculateFuelEfficiencySeries accumulates partial fill-ups until next full tank", () => {
-  const logs = [
-    {
-      id: "1",
-      vehicle_id: "v1",
-      logged_at: "2026-11-01",
-      odometer_km: 20000,
-      liters: 3.0,
-      price_per_liter: 12100,
-      total_cost: 36300,
-      is_full_tank: true
-    },
-    {
-      id: "2",
-      vehicle_id: "v1",
-      logged_at: "2026-11-05",
-      odometer_km: 20080,
-      liters: 1.5,
-      price_per_liter: 12100,
-      total_cost: 18150,
-      is_full_tank: false
-    },
-    {
-      id: "3",
-      vehicle_id: "v1",
-      logged_at: "2026-11-12",
-      odometer_km: 20200,
-      liters: 2.5,
-      price_per_liter: 12100,
-      total_cost: 30250,
-      is_full_tank: true
-    }
-  ];
-
-  const series = calculateFuelEfficiencySeries(logs);
-  assert.equal(series.length, 1);
-  assert.equal(series[0].distance_km, 200);
-  assert.equal(series[0].liters, 4);
-  assert.equal(series[0].km_per_liter, 50);
-});
-
-test("summarizeVehicleMetrics aggregates operating costs and overdue service alerts", () => {
-  const vehicle = {
-    id: "v1",
-    user_id: "u1",
-    name: "Honda Vario 110 eSP",
-    fuel_type: "Pertamax",
-    tank_capacity_liters: 3.7,
-    initial_odometer_km: 15000,
-    current_odometer_km: 15500
-  };
-
+test("summarizeVehicleTelemetry computes odometer, spend totals, and cost per km", () => {
+  const vehicle = { id: "v-1", user_id: "u-1", name: "Honda Vario 110 eSP", initial_odometer_km: 528000 };
   const fuelLogs = [
-    {
-      id: "f1",
-      vehicle_id: "v1",
-      logged_at: "2026-11-01",
-      odometer_km: 15000,
-      liters: 3.0,
-      price_per_liter: 12100,
-      total_cost: 36300,
-      is_full_tank: true
-    },
-    {
-      id: "f2",
-      vehicle_id: "v1",
-      logged_at: "2026-11-15",
-      odometer_km: 15500,
-      liters: 10.0,
-      price_per_liter: 12100,
-      total_cost: 121000,
-      is_full_tank: true
-    }
+    { id: "f-1", logged_at: "2026-11-01", odometer_km: 528200, liters: 3.2, total_cost: 38720, is_full_tank: true },
+    { id: "f-2", logged_at: "2026-11-08", odometer_km: 528408, liters: 3.3, total_cost: 39930, is_full_tank: true }
+  ];
+  const maintLogs = [
+    { id: "m-1", logged_at: "2026-11-09", odometer_km: 528408, category: "oil_change", title: "Oli MPX2", total_cost: 65000, next_due_km: 530408 }
   ];
 
-  const maintenanceLogs = [
-    {
-      id: "m1",
-      vehicle_id: "v1",
-      logged_at: "2026-11-05",
-      odometer_km: 15100,
-      category: "oil_change",
-      title: "Ganti Oli MPX2",
-      total_cost: 65000,
-      next_due_km: 15400
-    }
+  const summary = summarizeVehicleTelemetry(vehicle, fuelLogs, maintLogs);
+  assert.equal(summary.currentOdometer, 528408);
+  assert.equal(summary.trackedDistance, 408);
+  assert.equal(summary.totalFuelCost, 78650);
+  assert.equal(summary.totalMaintenanceCost, 65000);
+  assert.equal(summary.totalSpend, 143650);
+  assert.equal(summary.avgKmPerLiter, 63.03);
+  assert.equal(summary.costPerKm, 352);
+});
+
+test("summarizeServiceReminders flags due and overdue components based on latest log per category", () => {
+  const maintLogs = [
+    { id: "1", logged_at: "2026-09-01", odometer_km: 10000, category: "oil_change", title: "Oli Lama", total_cost: 60000, next_due_km: 12000 },
+    { id: "2", logged_at: "2026-10-01", odometer_km: 12000, category: "oil_change", title: "Oli Baru", total_cost: 60000, next_due_km: 14000 },
+    { id: "3", logged_at: "2026-08-01", odometer_km: 8000, category: "cvt_belt", title: "Servis CVT", total_cost: 150000, next_due_km: 13500 }
   ];
 
-  const summary = summarizeVehicleMetrics(vehicle, fuelLogs, maintenanceLogs);
-  assert.equal(summary.currentOdometerKm, 15500);
-  assert.equal(summary.totalTrackedDistanceKm, 500);
-  assert.equal(summary.averageKmPerLiter, 50);
-  assert.equal(summary.totalOperatingCost, 222300);
-  assert.equal(summary.serviceReminders.length, 1);
-  assert.equal(summary.serviceReminders[0].overdue, true);
-  assert.equal(summary.serviceReminders[0].remainingKm, -100);
+  const reminders = summarizeServiceReminders(maintLogs, 13700, 500);
+  assert.equal(reminders.length, 2);
+  assert.equal(reminders[0].category, "cvt_belt");
+  assert.equal(reminders[0].overdue, true);
+  assert.equal(reminders[0].remainingKm, -200);
+  assert.equal(reminders[1].category, "oil_change");
+  assert.equal(reminders[1].overdue, false);
+  assert.equal(reminders[1].remainingKm, 300);
+});
+
+test("summarizeMonthlySpend creates N chronological monthly buckets", () => {
+  const buckets = summarizeMonthlySpend([], [], 6);
+  assert.equal(buckets.length, 6);
+  assert.equal(buckets[5].total, 0);
 });
 
 test("detectOdometerAnomaly flags lower odometer than earlier log and normalizes valid order", () => {
@@ -160,6 +86,24 @@ test("detectOdometerAnomaly flags lower odometer than earlier log and normalizes
   assert.ok(
     String(detectOdometerAnomaly(existingLogs, 527900, "2026-11-15")).includes("lebih kecil")
   );
-  // Editing log "b" to its own odometer must not trigger a false warning
   assert.equal(detectOdometerAnomaly(existingLogs, 528408, "2026-11-10", "b"), null);
+});
+
+test("summarizeTaxReminders calculates countdowns, urgency, and overdue states", () => {
+  const vehicle = {
+    id: "v-1",
+    user_id: "u-1",
+    name: "Honda Vario 110 eSP",
+    tax_due_date: "2026-12-10",
+    plate_due_date: "2026-11-20"
+  };
+
+  const reminders = summarizeTaxReminders(vehicle, "2026-11-27");
+  assert.equal(reminders.length, 2);
+  assert.equal(reminders[0].kind, "plate");
+  assert.equal(reminders[0].daysRemaining, -7);
+  assert.equal(reminders[0].overdue, true);
+  assert.equal(reminders[1].kind, "tax");
+  assert.equal(reminders[1].daysRemaining, 13);
+  assert.equal(reminders[1].urgent, true);
 });

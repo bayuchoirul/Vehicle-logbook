@@ -236,3 +236,6 @@ CREATE POLICY "maintenance_logs_delete_own" ON public.maintenance_logs
 
 -- 9. Reload PostgREST schema cache immediately
 NOTIFY pgrst, 'reload schema';
+
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS tax_due_date DATE NULL;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS plate_due_date DATE NULL;
