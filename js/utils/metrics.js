@@ -331,9 +331,14 @@ export function detectOdometerAnomaly(logs, targetOdometer, targetDate, excludeI
 }
 
 /**
+ * Summarizes STNK annual tax and 5-year plate reminders, including whether the
+ * "Sudah Bayar" action button should be displayed:
+ * - Annual STNK tax ('tax'): shown when <= 60 days remaining (hidden once paid & extended > 60 days).
+ * - 5-year plate renewal ('plate'): shown only starting H-7 (<= 7 days remaining).
+ *
  * @param {import("../types.js").Vehicle | null} vehicle
  * @param {string} [referenceIsoDate]
- * @returns {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean}>}
+ * @returns {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean, canPay: boolean}>}
  */
 export function summarizeTaxReminders(vehicle, referenceIsoDate) {
   if (!vehicle) return [];
@@ -345,12 +350,22 @@ export function summarizeTaxReminders(vehicle, referenceIsoDate) {
   if (Number.isNaN(todayMs)) return [];
 
   const MS_PER_DAY = 86400000;
-  /** @type {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean}>} */
+  /** @type {Array<{kind: 'tax' | 'plate', label: string, dueDate: string, daysRemaining: number, overdue: boolean, urgent: boolean, canPay: boolean}>} */
   const items = [];
 
   const targets = [
-    { kind: /** @type {const} */ ("tax"), label: "Pajak Tahunan (STNK)", raw: vehicle.tax_due_date },
-    { kind: /** @type {const} */ ("plate"), label: "Ganti Plat 5 Tahunan", raw: vehicle.plate_due_date }
+    {
+      kind: /** @type {const} */ ("tax"),
+      label: "Pajak Tahunan (STNK)",
+      raw: vehicle.tax_due_date,
+      payWindowDays: 60
+    },
+    {
+      kind: /** @type {const} */ ("plate"),
+      label: "Ganti Plat 5 Tahunan",
+      raw: vehicle.plate_due_date,
+      payWindowDays: 7
+    }
   ];
 
   for (const t of targets) {
@@ -366,7 +381,8 @@ export function summarizeTaxReminders(vehicle, referenceIsoDate) {
       dueDate: dueStr,
       daysRemaining,
       overdue: daysRemaining < 0,
-      urgent: daysRemaining <= 30
+      urgent: daysRemaining <= 30,
+      canPay: daysRemaining <= t.payWindowDays
     });
   }
 

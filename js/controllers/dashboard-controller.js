@@ -269,12 +269,26 @@ function renderServiceReminders(reminders) {
         ? "bg-rose-100 text-rose-700"
         : item.urgent
           ? "bg-amber-100 text-amber-800"
-          : "bg-sky-100 text-sky-700";
+          : item.canPay
+            ? "bg-sky-100 text-sky-700"
+            : "bg-emerald-50 text-emerald-700";
+
       const statusText = item.overdue
         ? `Terlambat ${Math.abs(item.daysRemaining)} hari`
         : item.daysRemaining === 0
           ? "Jatuh tempo hari ini"
           : `${item.daysRemaining} hari lagi`;
+
+      const actionBtnHtml = item.canPay
+        ? `<button
+            type="button"
+            data-pay-tax="${escapeHtml(item.kind)}"
+            class="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700 transition"
+          >
+            Sudah Bayar
+          </button>`
+        : "";
+
       return `
         <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5">
           <div>
@@ -285,13 +299,7 @@ function renderServiceReminders(reminders) {
             <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass}">
               ${escapeHtml(statusText)}
             </span>
-            <button
-              type="button"
-              data-pay-tax="${escapeHtml(item.kind)}"
-              class="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700 transition"
-            >
-              Sudah Bayar
-            </button>
+            ${actionBtnHtml}
           </div>
         </div>
       `;

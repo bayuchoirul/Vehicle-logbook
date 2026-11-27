@@ -55,14 +55,25 @@ test("summarizeVehicleTelemetry & summarizeFuelBrandBreakdown aggregate totals",
   assert.equal(reminders[0].remainingKm, 425);
 });
 
-test("summarizeTaxReminders, calculateNextTaxDueDate & detectOdometerAnomaly", () => {
-  const tax = summarizeTaxReminders(
-    { id: "v1", name: "Vario", tax_due_date: "2026-12-10", plate_due_date: "2028-05-01" },
+test("summarizeTaxReminders visibility windows, calculateNextTaxDueDate & detectOdometerAnomaly", () => {
+  const beforeH7 = summarizeTaxReminders(
+    { id: "v1", name: "Vario", tax_due_date: "2026-12-10", plate_due_date: "2027-03-04" },
     "2026-11-27"
   );
-  assert.equal(tax[0].kind, "tax");
-  assert.equal(tax[0].daysRemaining, 13);
-  assert.equal(tax[0].urgent, true);
+  assert.equal(beforeH7[0].kind, "tax");
+  assert.equal(beforeH7[0].daysRemaining, 13);
+  assert.equal(beforeH7[0].canPay, true);
+
+  assert.equal(beforeH7[1].kind, "plate");
+  assert.equal(beforeH7[1].daysRemaining, 97);
+  assert.equal(beforeH7[1].canPay, false);
+
+  const atH7 = summarizeTaxReminders(
+    { id: "v1", name: "Vario", tax_due_date: "2027-03-04", plate_due_date: "2027-03-04" },
+    "2027-02-25"
+  );
+  assert.equal(atH7[0].canPay, true);
+  assert.equal(atH7[1].canPay, true);
 
   assert.equal(calculateNextTaxDueDate("2026-12-10", "tax"), "2027-12-10");
   assert.equal(calculateNextTaxDueDate("2026-12-10", "plate"), "2031-12-10");
