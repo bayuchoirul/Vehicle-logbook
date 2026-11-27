@@ -236,3 +236,67 @@ CREATE POLICY "maintenance_logs_delete_own" ON public.maintenance_logs
 
 -- 9. Reload PostgREST schema cache immediately
 NOTIFY pgrst, 'reload schema';
+
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS tax_due_date DATE NULL;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS plate_due_date DATE NULL;
+
+-- 1. Buat tabel fuel_prices jika belum ada
+CREATE TABLE IF NOT EXISTS public.fuel_prices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand TEXT NOT NULL,
+  product_name TEXT NOT NULL UNIQUE,
+  ron INTEGER,
+  price_per_liter NUMERIC(10, 2) NOT NULL CHECK (price_per_liter > 0),
+  sort_order INTEGER NOT NULL DEFAULT 100,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 2. Pastikan seluruh kolom yang diminta aplikasi tersedia jika tabel sudah dibuat sebelumnya
+ALTER TABLE public.fuel_prices
+  ADD COLUMN IF NOT EXISTS brand TEXT,
+  ADD COLUMN IF NOT EXISTS product_name TEXT,
+  ADD COLUMN IF NOT EXISTS ron INTEGER,
+  ADD COLUMN IF NOT EXISTS price_per_liter NUMERIC(10, 2),
+  ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 100,
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+-- 3. Aktifkan RLS & izinkan pembacaan untuk user yang sudah login (authenticated)
+ALTER TABLE public.fuel_prices ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "fuel_prices_select_authenticated" ON public.fuel_prices;
+CREATE POLICY "fuel_prices_select_authenticated"
+  ON public.fuel_prices
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+-- 4. Isi / perbarui data referensi harga BBM (upsert berdasarkan product_name)
+INSERT INTO public.fuel_prices (brand, product_name, ron, price_per_liter, sort_order, is_active)
+VALUES
+  ('Pertamina', 'Pertalite', 90, 10000, 10, true),
+  ('Pertamina', 'Pertamax', 92, 12100, 20, true),
+  ('Pertamina', 'Pertamax Green 95', 95, 13150, 30, true),
+  ('Pertamina', 'Pertamax Turbo', 98, 13500, 40, true),
+  ('Pertamina', 'Bio Solar', NULL, 6800, 50, true),
+  ('Pertamina', 'Dexlite', NULL, 13050, 60, true),
+  ('Pertamina', 'Pertamina Dex', NULL, 13450, 70, true),
+  ('Shell', 'Shell Super', 92, 12290, 80, true),
+  ('Shell', 'Shell V-Power', 95, 13340, 90, true),
+  ('Shell', 'Shell V-Power Nitro+', 98, 13570, 100, true),
+  ('Shell', 'Shell V-Power Diesel', NULL, 13900, 110, true),
+  ('BP', 'BP 92', 92, 12290, 120, true),
+  ('BP', 'BP Ultimate', 95, 13340, 130, true),
+  ('BP', 'BP Ultimate Diesel', NULL, 13900, 140, true),
+  ('Vivo', 'Revvo 90', 90, 11900, 150, true),
+  ('Vivo', 'Revvo 92', 92, 12200, 160, true),
+  ('Vivo', 'Revvo 95', 95, 13200, 170, true)
+ON CONFLICT (product_name) DO UPDATE
+SET
+  brand = EXCLUDED.brand,
+  ron = EXCLUDED.ron,
+  price_per_liter = EXCLUDED.price_per_liter,
+  sort_order = EXCLUDED.sort_order,
+  is_active = EXCLUDED.is_active,
+  updated_at = NOW();

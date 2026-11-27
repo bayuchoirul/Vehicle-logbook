@@ -48,6 +48,10 @@ const state = {
   searchQuery: ""
 };
 
+/**
+ * Combines fuel and maintenance logs for odometer sequence validation.
+ * @returns {Array<{id: string, logged_at: string, odometer_km: number | string}>}
+ */
 function getAllVehicleLogs() {
   return [...state.fuelLogs, ...state.maintenanceLogs];
 }
@@ -135,6 +139,10 @@ function updateEditFuelLitersPreview() {
   previewEl.textContent = liters > 0 ? formatLiters(liters) : "0,00 L";
 }
 
+/**
+ * Opens and pre-fills the Edit Fuel Log modal.
+ * @param {string} logId
+ */
 function openEditFuelModal(logId) {
   const log = state.fuelLogs.find((item) => item.id === logId);
   if (!log) return;
@@ -166,6 +174,10 @@ function openEditFuelModal(logId) {
   openModal("modal-edit-fuel");
 }
 
+/**
+ * Opens and pre-fills the Edit Maintenance Log modal.
+ * @param {string} logId
+ */
 function openEditMaintModal(logId) {
   const log = state.maintenanceLogs.find((item) => item.id === logId);
   if (!log) return;
@@ -374,6 +386,43 @@ function exportFilteredCsv() {
   showToast("File CSV berhasil diunduh.", "success");
 }
 
+function exportFullBackupJson() {
+  const vehicle = state.vehicles.find((v) => v.id === state.activeVehicleId) || null;
+  if (!vehicle && !state.fuelLogs.length && !state.maintenanceLogs.length) {
+    showToast("Belum ada data kendaraan atau log untuk di-backup.", "info");
+    return;
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const payload = {
+    app: "Vehicle Logbook",
+    schema_version: 2,
+    exported_at: new Date().toISOString(),
+    vehicle,
+    counts: {
+      fuel_logs: state.fuelLogs.length,
+      maintenance_logs: state.maintenanceLogs.length
+    },
+    fuel_logs: state.fuelLogs,
+    maintenance_logs: state.maintenanceLogs
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json;charset=utf-8;"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const slug = (vehicle?.name || "kendaraan")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  link.href = url;
+  link.download = `vehicle-logbook-backup-${slug || "data"}-${today}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("File backup JSON berhasil diunduh.", "success");
+}
+
 async function loadVehicleLogs() {
   if (!state.activeVehicleId) {
     state.fuelLogs = [];
@@ -540,6 +589,7 @@ function bindLogbookEvents() {
   });
 
   qs("#btn-export-csv")?.addEventListener("click", exportFilteredCsv);
+  qs("#btn-export-json")?.addEventListener("click", exportFullBackupJson);
 
   qs("#logbook-table-body")?.addEventListener("click", async (event) => {
     const target = /** @type {HTMLElement} */ (event.target);

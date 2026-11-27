@@ -7,16 +7,22 @@ import {
   listFuelLogs,
   listFuelPrices,
   listMaintenanceLogs,
-  listVehicles
+  listVehicles,
+  updateVehicle
 } from "../services/vehicle-service.js";
 import {
+  DEFAULT_SERVICE_INTERVALS_KM,
   MAINTENANCE_CATEGORIES,
   calculateLitersFromCost,
   formatDateID,
   formatIDR,
   formatLiters,
   formatNumber,
-  summarizeVehicleMetrics
+  summarizeFuelBrandBreakdown,
+  summarizeMonthlySpend,
+  summarizeServiceReminders,
+  summarizeTaxReminders,
+  summarizeVehicleTelemetry
 } from "../utils/metrics.js";
 import {
   bindModalDismissHandlers,
@@ -31,20 +37,9 @@ import {
 
 const STORAGE_VEHICLE_KEY = "vehicle_logbook_active_vehicle_id";
 
-const DEFAULT_SERVICE_INTERVALS_KM = Object.freeze({
-  oil_change: 2000,
-  cvt_belt: 8000,
-  tires: 15000,
-  brakes: 10000,
-  battery: 20000,
-  tune_up: 4000,
-  other: 0
-});
-
 const state = {
   /** @type {import("../types.js").Vehicle[]} */
   vehicles: [],
-  /** @type {string} */
   activeVehicleId: "",
   /** @type {import("../types.js").FuelPriceOption[]} */
   fuelPrices: [...DEFAULT_FUEL_PRICES],
@@ -54,52 +49,42 @@ const state = {
   maintenanceLogs: []
 };
 
-/**
- * Returns currently selected vehicle object.
- * @returns {import("../types.js").Vehicle | null}
- */
 function getActiveVehicle() {
-  return state.vehicles.find((v) => v.id === state.activeVehicleId) || state.vehicles[0] || null;
+  return state.vehicles.find((v) => v.id === state.activeVehicleId) || null;
+}
+
+function getTodayIsoDate() {
+  const now = new Date();
+  const offsetMs = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
 }
 
 /**
- * Returns the most recent non-empty station name for the active vehicle.
- * @returns {string}
+ * Finds the best matching FuelPriceOption for a vehicle's primary fuel type or previous log.
+ * @param {string} [preferredName]
+ * @returns {import("../types.js").FuelPriceOption}
  */
-function getLastUsedStationName() {
-  const recentWithStation = state.fuelLogs.find(
-    (f) => typeof f.station_name === "string" && f.station_name.trim().length > 0
+function resolveDefaultFuelOption(preferredName) {
+  const target = String(preferredName || "").trim().toLowerCase();
+  if (target) {
+    const exact = state.fuelPrices.find((p) => p.product_name.toLowerCase() === target);
+    if (exact) return exact;
+    const partial = state.fuelPrices.find((p) => p.product_name.toLowerCase().includes(target));
+    if (partial) return partial;
+  }
+  return (
+    state.fuelPrices.find((p) => p.product_name === "Pertamax") ||
+    state.fuelPrices[0] ||
+    DEFAULT_FUEL_PRICES[1]
   );
-  return recentWithStation ? recentWithStation.station_name.trim() : "";
 }
 
 /**
- * Returns the most recent non-empty workshop name for the active vehicle.
- * @returns {string}
- */
-function getLastUsedWorkshopName() {
-  const recentWithWorkshop = state.maintenanceLogs.find(
-    (m) => typeof m.workshop_name === "string" && m.workshop_name.trim().length > 0
-  );
-  return recentWithWorkshop ? recentWithWorkshop.workshop_name.trim() : "";
-}
-
-/**
- * Finds a fuel price entry by product name (case-insensitive).
- * @param {string} productName
- * @returns {import("../types.js").FuelPriceOption | undefined}
- */
-function findFuelOption(productName) {
-  const needle = String(productName || "").trim().toLowerCase();
-  return state.fuelPrices.find((item) => item.product_name.toLowerCase() === needle);
-}
-
-/**
- * Populates a <select> element with grouped <optgroup> Indonesian fuel products.
+ * Populates a <select> with grouped Indonesian fuel brands & products.
  * @param {HTMLSelectElement | null} selectEl
- * @param {string} [selectedProductName="Pertamax"]
+ * @param {string} [selectedProductName]
  */
-function renderFuelSelectOptions(selectEl, selectedProductName = "Pertamax") {
+function renderFuelSelectOptions(selectEl, selectedProductName) {
   if (!selectEl) return;
 
   /** @type {Map<string, import("../types.js").FuelPriceOption[]>} */
@@ -110,59 +95,32 @@ function renderFuelSelectOptions(selectEl, selectedProductName = "Pertamax") {
     grouped.set(item.brand, list);
   }
 
-  const targetLower = String(selectedProductName || "Pertamax").trim().toLowerCase();
-  let matched = false;
+  const targetLower = String(selectedProductName || "").trim().toLowerCase();
+  let hasSelection = false;
 
-  const groupsHtml = [...grouped.entries()]
+  const html = [...grouped.entries()]
     .map(([brand, items]) => {
       const optionsHtml = items
         .map((item) => {
-          const isSelected = item.product_name.toLowerCase() === targetLower;
-          if (isSelected) matched = true;
-          const specText = item.spec_label ? ` (${item.spec_label})` : "";
-          const label = `${item.product_name}${specText} — ${formatIDR(item.price_per_liter)}/L`;
+          const isSelected = !hasSelection && item.product_name.toLowerCase() === targetLower;
+          if (isSelected) hasSelection = true;
+          const ronTag = item.ron ? ` (RON ${item.ron})` : "";
           return `<option value="${escapeHtml(item.product_name)}" data-price="${
             item.price_per_liter
-          }" ${isSelected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+          }" ${isSelected ? "selected" : ""}>${escapeHtml(item.product_name)}${ronTag}</option>`;
         })
         .join("");
       return `<optgroup label="${escapeHtml(brand)}">${optionsHtml}</optgroup>`;
     })
     .join("");
 
-  if (!matched && selectedProductName) {
-    const customOpt = `<option value="${escapeHtml(selectedProductName)}" selected>${escapeHtml(
-      selectedProductName
-    )}</option>`;
-    selectEl.innerHTML = customOpt + groupsHtml;
-  } else {
-    selectEl.innerHTML = groupsHtml;
-  }
+  selectEl.innerHTML = html;
 }
 
 /**
- * Synchronizes `#fuel-price` from the currently selected `#fuel-brand` option and refreshes liter preview.
+ * Recalculates and updates the automatic volume preview inside the Add Fuel modal.
  */
-function syncFuelPriceFromSelection() {
-  const brandSelect = /** @type {HTMLSelectElement | null} */ (qs("#fuel-brand"));
-  const priceInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-price"));
-  if (!brandSelect || !priceInput) return;
-
-  const selectedOption = brandSelect.options[brandSelect.selectedIndex];
-  const datasetPrice = Number(selectedOption?.dataset?.price || 0);
-  if (datasetPrice > 0) {
-    priceInput.value = String(datasetPrice);
-  } else {
-    const found = findFuelOption(brandSelect.value);
-    if (found) priceInput.value = String(found.price_per_liter);
-  }
-  updateCalculatedLitersPreview();
-}
-
-/**
- * Computes and displays estimated liters from `Total Bayar (Rp) / Harga per Liter (Rp)`.
- */
-function updateCalculatedLitersPreview() {
+function updateFuelLitersPreview() {
   const totalInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-total"));
   const priceInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-price"));
   const previewEl = qs("#fuel-liters-preview");
@@ -178,44 +136,36 @@ function updateCalculatedLitersPreview() {
     previewEl.classList.add("text-sky-700");
   } else {
     previewEl.textContent = "0,00 L";
-    previewEl.classList.add("text-slate-400");
     previewEl.classList.remove("text-sky-700");
+    previewEl.classList.add("text-slate-400");
   }
 }
 
 /**
- * Updates the suggested next service kilometer helper banner in the maintenance modal.
+ * Updates the suggested maintenance interval helper banner based on category + current odometer.
  */
-function updateMaintenanceIntervalHint() {
+function updateMaintIntervalHint() {
   const categorySelect = /** @type {HTMLSelectElement | null} */ (qs("#maint-category"));
   const odoInput = /** @type {HTMLInputElement | null} */ (qs("#maint-odometer"));
-  const hintBox = qs("#maint-interval-hint");
-  const hintLabel = qs("#maint-interval-label");
-  const applyBtn = qs("#btn-apply-maint-interval");
+  const hintBox = /** @type {HTMLElement | null} */ (qs("#maint-interval-hint"));
+  const labelEl = qs("#maint-interval-label");
+  if (!categorySelect || !hintBox || !labelEl) return;
 
-  if (!categorySelect || !hintBox || !hintLabel || !applyBtn) return;
+  const interval = DEFAULT_SERVICE_INTERVALS_KM[categorySelect.value];
+  const baseOdo = Number(String(odoInput?.value || "0").replace(",", "."));
 
-  const intervalKm = DEFAULT_SERVICE_INTERVALS_KM[categorySelect.value] || 0;
-  if (intervalKm <= 0) {
+  if (!interval || !Number.isFinite(baseOdo) || baseOdo < 0) {
     hintBox.classList.add("hidden");
     hintBox.classList.remove("flex");
     return;
   }
 
-  const currentOdo = Number(String(odoInput?.value || "").replace(",", "."));
-  const vehicle = getActiveVehicle();
-  const baseOdo =
-    Number.isFinite(currentOdo) && currentOdo > 0
-      ? currentOdo
-      : Number(vehicle?.current_odometer_km || 0);
-
-  const suggestedDue = Math.round(baseOdo + intervalKm);
-  hintLabel.textContent = `Saran +${formatNumber(intervalKm, 0)} km → Target ${formatNumber(
-    suggestedDue,
+  const targetKm = Math.round(baseOdo + interval);
+  labelEl.textContent = `Saran interval +${formatNumber(interval, 0)} km → Target: ${formatNumber(
+    targetKm,
     0
   )} km`;
-  applyBtn.setAttribute("data-suggested-due", String(suggestedDue));
-
+  hintBox.dataset.suggestedKm = String(targetKm);
   hintBox.classList.remove("hidden");
   hintBox.classList.add("flex");
 }
@@ -223,19 +173,21 @@ function updateMaintenanceIntervalHint() {
 function renderVehicleSelector() {
   const select = /** @type {HTMLSelectElement | null} */ (qs("#vehicle-selector"));
   const emptyBanner = qs("#empty-vehicle-banner");
-  const dashboardContent = qs("#dashboard-main");
+  const dashboardMain = qs("#dashboard-main");
+  const metaBadge = qs("#vehicle-meta-badge");
 
   if (!select) return;
 
-  if (state.vehicles.length === 0) {
+  if (!state.vehicles.length) {
     select.innerHTML = `<option value="">Belum ada kendaraan</option>`;
     emptyBanner?.classList.remove("hidden");
-    dashboardContent?.classList.add("opacity-50", "pointer-events-none");
+    dashboardMain?.classList.add("hidden");
+    if (metaBadge) metaBadge.textContent = "0 Kendaraan";
     return;
   }
 
   emptyBanner?.classList.add("hidden");
-  dashboardContent?.classList.remove("opacity-50", "pointer-events-none");
+  dashboardMain?.classList.remove("hidden");
 
   select.innerHTML = state.vehicles
     .map((v) => {
@@ -244,70 +196,107 @@ function renderVehicleSelector() {
       return `<option value="${escapeHtml(v.id)}" ${selected}>${escapeHtml(label)}</option>`;
     })
     .join("");
+
+  const active = getActiveVehicle();
+  if (metaBadge && active) {
+    metaBadge.textContent = `${active.fuel_type || "Pertamax"} • Tangki ${formatLiters(
+      active.tank_capacity_liters ?? 3.7
+    )}`;
+  }
 }
 
 function renderDashboard() {
   const vehicle = getActiveVehicle();
-  const metrics = summarizeVehicleMetrics(vehicle, state.fuelLogs, state.maintenanceLogs);
+  const telemetry = summarizeVehicleTelemetry(
+    vehicle,
+    state.fuelLogs,
+    state.maintenanceLogs
+  );
 
-  const badgeEl = qs("#vehicle-meta-badge");
-  if (badgeEl) {
-    badgeEl.textContent = vehicle
-      ? `${vehicle.fuel_type} • Tangki ${formatNumber(vehicle.tank_capacity_liters, 1)} L`
-      : "Belum ada kendaraan";
+  const elOdo = qs("#kpi-odometer");
+  const elDist = qs("#kpi-distance");
+  const elAvgKmpl = qs("#kpi-avg-kmpl");
+  const elLastKmpl = qs("#kpi-last-kmpl");
+  const elTotalCost = qs("#kpi-total-cost");
+  const elCostPerKm = qs("#kpi-cost-per-km");
+  const elFuelCost = qs("#kpi-fuel-cost");
+  const elMaintCost = qs("#kpi-maint-cost");
+
+  if (elOdo) elOdo.textContent = `${formatNumber(telemetry.currentOdometer, 0)} km`;
+  if (elDist) elDist.textContent = `Jarak tercatat: ${formatNumber(telemetry.trackedDistance, 0)} km`;
+
+  if (elAvgKmpl) {
+    elAvgKmpl.textContent =
+      telemetry.avgKmPerLiter !== null ? `${formatNumber(telemetry.avgKmPerLiter, 2)} km/L` : "— km/L";
   }
-
-  const odoEl = qs("#kpi-odometer");
-  const distEl = qs("#kpi-distance");
-  const avgKmplEl = qs("#kpi-avg-kmpl");
-  const lastKmplEl = qs("#kpi-last-kmpl");
-  const totalCostEl = qs("#kpi-total-cost");
-  const costPerKmEl = qs("#kpi-cost-per-km");
-  const fuelCostEl = qs("#kpi-fuel-cost");
-  const maintCostEl = qs("#kpi-maint-cost");
-
-  if (odoEl) odoEl.textContent = `${formatNumber(metrics.currentOdometerKm, 0)} km`;
-  if (distEl) distEl.textContent = `Jarak tercatat: ${formatNumber(metrics.totalTrackedDistanceKm, 1)} km`;
-  if (avgKmplEl) {
-    avgKmplEl.textContent =
-      metrics.averageKmPerLiter !== null ? `${formatNumber(metrics.averageKmPerLiter, 2)} km/L` : "— km/L";
-  }
-  if (lastKmplEl) {
-    lastKmplEl.textContent =
-      metrics.lastKmPerLiter !== null
-        ? `Isian terakhir: ${formatNumber(metrics.lastKmPerLiter, 2)} km/L`
+  if (elLastKmpl) {
+    elLastKmpl.textContent =
+      telemetry.lastKmPerLiter !== null
+        ? `Terakhir: ${formatNumber(telemetry.lastKmPerLiter, 2)} km/L`
         : "Butuh min. 2x full tank";
   }
-  if (totalCostEl) totalCostEl.textContent = formatIDR(metrics.totalOperatingCost);
-  if (costPerKmEl) {
-    costPerKmEl.textContent =
-      metrics.costPerKm !== null ? `${formatIDR(metrics.costPerKm)} / km` : "Rp — / km";
+
+  if (elTotalCost) elTotalCost.textContent = formatIDR(telemetry.totalSpend);
+  if (elCostPerKm) {
+    elCostPerKm.textContent =
+      telemetry.costPerKm !== null ? `${formatIDR(telemetry.costPerKm)} / km` : "Rp — / km";
   }
-  if (fuelCostEl) {
-    fuelCostEl.textContent = `${formatIDR(metrics.totalFuelCost)} (${formatLiters(
-      metrics.totalFuelLiters
+
+  if (elFuelCost) {
+    elFuelCost.textContent = `${formatIDR(telemetry.totalFuelCost)} (${formatLiters(
+      telemetry.totalFuelLiters
     )})`;
   }
-  if (maintCostEl) maintCostEl.textContent = formatIDR(metrics.totalMaintenanceCost);
+  if (elMaintCost) elMaintCost.textContent = formatIDR(telemetry.totalMaintenanceCost);
 
-  renderServiceReminders(metrics.serviceReminders);
-  renderMonthlySpendChart(metrics.monthlySpend);
-  renderRecentLogs();
+  renderServiceReminders(
+    summarizeServiceReminders(state.maintenanceLogs, telemetry.currentOdometer)
+  );
+  renderMonthlyChart(summarizeMonthlySpend(state.fuelLogs, state.maintenanceLogs, 6));
+  renderEfficiencyTrend(vehicle, telemetry);
+  renderFuelBrandBreakdown();
+  renderRecentActivity();
 }
 
-/**
- * @param {import("../types.js").DashboardMetrics["serviceReminders"]} reminders
- */
 function renderServiceReminders(reminders) {
   const container = qs("#service-reminders-list");
   if (!container) return;
 
-  if (!reminders.length) {
-    container.innerHTML = `<p class="text-sm text-slate-500">Semua jadwal servis berada dalam batas aman.</p>`;
+  const vehicle = getActiveVehicle();
+  const taxItems = summarizeTaxReminders(vehicle);
+
+  if (!taxItems.length && !reminders.length) {
+    container.innerHTML = `<p class="text-sm text-slate-500">Semua jadwal servis &amp; pajak berada dalam batas aman.</p>`;
     return;
   }
 
-  container.innerHTML = reminders
+  const taxHtml = taxItems
+    .map((item) => {
+      const badgeClass = item.overdue
+        ? "bg-rose-100 text-rose-700"
+        : item.urgent
+          ? "bg-amber-100 text-amber-800"
+          : "bg-sky-100 text-sky-700";
+      const statusText = item.overdue
+        ? `Terlambat ${Math.abs(item.daysRemaining)} hari`
+        : item.daysRemaining === 0
+          ? "Jatuh tempo hari ini"
+          : `${item.daysRemaining} hari lagi`;
+      return `
+        <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5">
+          <div>
+            <p class="text-sm font-semibold text-slate-800">${escapeHtml(item.label)}</p>
+            <p class="text-xs text-slate-500">Jatuh tempo: ${escapeHtml(formatDateID(item.dueDate))}</p>
+          </div>
+          <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass}">
+            ${escapeHtml(statusText)}
+          </span>
+        </div>
+      `;
+    })
+    .join("");
+
+  const serviceHtml = reminders
     .map((item) => {
       const badgeClass = item.overdue
         ? "bg-rose-100 text-rose-700"
@@ -328,39 +317,29 @@ function renderServiceReminders(reminders) {
       `;
     })
     .join("");
+
+  container.innerHTML = taxHtml + serviceHtml;
 }
 
-/**
- * @param {import("../types.js").DashboardMetrics["monthlySpend"]} monthlySpend
- */
-function renderMonthlySpendChart(monthlySpend) {
+function renderMonthlyChart(buckets) {
   const container = qs("#monthly-spend-chart");
   if (!container) return;
 
-  if (!monthlySpend.length) {
-    container.innerHTML = `<p class="text-sm text-slate-500">Belum ada data pengeluaran bulanan.</p>`;
-    return;
-  }
+  const maxTotal = Math.max(...buckets.map((b) => b.total), 1);
 
-  const maxCost = Math.max(...monthlySpend.map((m) => m.totalCost), 1);
-
-  container.innerHTML = monthlySpend
-    .map((m) => {
-      const fuelPct = Math.round((m.fuelCost / maxCost) * 100);
-      const maintPct = Math.round((m.maintenanceCost / maxCost) * 100);
+  container.innerHTML = buckets
+    .map((b) => {
+      const fuelPct = Math.round((b.fuel / maxTotal) * 100);
+      const maintPct = Math.round((b.maintenance / maxTotal) * 100);
       return `
         <div class="space-y-1">
           <div class="flex items-center justify-between text-xs">
-            <span class="font-medium text-slate-700">${escapeHtml(m.month)}</span>
-            <span class="font-semibold text-slate-900">${escapeHtml(formatIDR(m.totalCost))}</span>
+            <span class="font-medium text-slate-600">${escapeHtml(b.label)}</span>
+            <span class="font-semibold text-slate-800">${escapeHtml(formatIDR(b.total))}</span>
           </div>
           <div class="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-            <div class="bg-sky-500" style="width: ${fuelPct}%" title="BBM: ${escapeHtml(
-        formatIDR(m.fuelCost)
-      )}"></div>
-            <div class="bg-amber-500" style="width: ${maintPct}%" title="Servis: ${escapeHtml(
-        formatIDR(m.maintenanceCost)
-      )}"></div>
+            <div class="bg-sky-500 transition-all" style="width: ${fuelPct}%" title="BBM: ${escapeHtml(formatIDR(b.fuel))}"></div>
+            <div class="bg-amber-500 transition-all" style="width: ${maintPct}%" title="Servis: ${escapeHtml(formatIDR(b.maintenance))}"></div>
           </div>
         </div>
       `;
@@ -368,202 +347,317 @@ function renderMonthlySpendChart(monthlySpend) {
     .join("");
 }
 
-function renderRecentLogs() {
+function renderEfficiencyTrend(vehicle, telemetry) {
+  const container = qs("#efficiency-trend-chart");
+  const rangeBadge = qs("#kpi-tank-range");
+  const tankCap = Number(vehicle?.tank_capacity_liters ?? 3.7);
+
+  if (rangeBadge) {
+    if (telemetry.avgKmPerLiter !== null && tankCap > 0) {
+      const estRange = Math.round(telemetry.avgKmPerLiter * tankCap);
+      rangeBadge.textContent = `1 Tangki (${formatLiters(tankCap)}): ~${formatNumber(estRange, 0)} km`;
+    } else {
+      rangeBadge.textContent = "Estimasi tangki: — km";
+    }
+  }
+
+  if (!container) return;
+
+  const recentPoints = telemetry.efficiencySeries.slice(-8);
+  if (!recentPoints.length) {
+    container.innerHTML = `<p class="text-sm text-slate-500">Catat minimal 2 kali pengisian <strong>Full Tank</strong> untuk melihat grafik tren km/L.</p>`;
+    return;
+  }
+
+  const maxKmpl = Math.max(...recentPoints.map((p) => p.km_per_liter), 1);
+  const bestKmpl = Math.max(...recentPoints.map((p) => p.km_per_liter));
+
+  container.innerHTML = recentPoints
+    .map((pt) => {
+      const pct = Math.max(8, Math.round((pt.km_per_liter / maxKmpl) * 100));
+      const isBest = pt.km_per_liter === bestKmpl && recentPoints.length > 1;
+      const barColor = isBest ? "bg-emerald-500" : "bg-sky-500";
+      return `
+        <div class="space-y-1">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-600">
+              ${escapeHtml(formatDateID(pt.logged_at))}
+              <span class="text-slate-400">(${formatNumber(pt.distance_km, 0)} km / ${formatLiters(pt.liters_used)})</span>
+            </span>
+            <span class="font-bold ${isBest ? "text-emerald-700" : "text-slate-900"}">
+              ${formatNumber(pt.km_per_liter, 2)} km/L
+            </span>
+          </div>
+          <div class="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+            <div class="${barColor} h-full rounded-full transition-all" style="width: ${pct}%"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderFuelBrandBreakdown() {
+  const container = qs("#fuel-brand-breakdown");
+  if (!container) return;
+
+  const rows = summarizeFuelBrandBreakdown(state.fuelLogs);
+  if (!rows.length) {
+    container.innerHTML = `<p class="text-sm text-slate-500">Belum ada data pengisian BBM.</p>`;
+    return;
+  }
+
+  container.innerHTML = rows
+    .map(
+      (row) => `
+      <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5">
+        <div>
+          <p class="text-sm font-semibold text-slate-900">${escapeHtml(row.brand)}</p>
+          <p class="text-xs text-slate-500">
+            ${row.fillCount}x isi • ${formatLiters(row.totalLiters)} • Rata-rata ${escapeHtml(formatIDR(row.avgPricePerLiter))}/L
+          </p>
+        </div>
+        <p class="shrink-0 text-sm font-bold text-slate-900">${escapeHtml(formatIDR(row.totalCost))}</p>
+      </div>
+    `
+    )
+    .join("");
+}
+
+function renderRecentActivity() {
   const container = qs("#recent-activity-list");
   if (!container) return;
 
   const combined = [
     ...state.fuelLogs.map((f) => ({
-      type: /** @type {const} */ ("fuel"),
+      kind: "BBM",
+      badgeClass: "bg-sky-100 text-sky-700",
       logged_at: f.logged_at,
       odometer_km: Number(f.odometer_km),
       title: `${f.fuel_brand || "BBM"} • ${formatLiters(f.liters)}`,
-      subtitle: f.station_name || (f.is_full_tank ? "Full Tank" : "Isi Sebagian"),
+      subtitle: f.station_name || (f.is_full_tank ? "Full tank" : "Isi parsial"),
       cost: Number(f.total_cost)
     })),
     ...state.maintenanceLogs.map((m) => ({
-      type: /** @type {const} */ ("maintenance"),
+      kind: "Servis",
+      badgeClass: "bg-amber-100 text-amber-700",
       logged_at: m.logged_at,
       odometer_km: Number(m.odometer_km),
       title: m.title,
-      subtitle: m.workshop_name || MAINTENANCE_CATEGORIES[m.category] || "Servis",
+      subtitle: MAINTENANCE_CATEGORIES[m.category] || m.category,
       cost: Number(m.total_cost)
     }))
   ]
     .sort((a, b) => {
-      const dateCmp = String(b.logged_at).localeCompare(String(a.logged_at));
-      if (dateCmp !== 0) return dateCmp;
+      const d = String(b.logged_at).localeCompare(String(a.logged_at));
+      if (d !== 0) return d;
       return b.odometer_km - a.odometer_km;
     })
     .slice(0, 6);
 
   if (!combined.length) {
-    container.innerHTML = `<p class="py-6 text-center text-sm text-slate-500">Belum ada catatan BBM atau servis untuk kendaraan ini.</p>`;
+    container.innerHTML = `<p class="py-4 text-sm text-slate-500">Belum ada catatan BBM atau servis untuk kendaraan ini.</p>`;
     return;
   }
 
   container.innerHTML = combined
-    .map((item) => {
-      const iconBg =
-        item.type === "fuel"
-          ? "bg-sky-100 text-sky-700"
-          : "bg-amber-100 text-amber-700";
-      const badge = item.type === "fuel" ? "BBM" : "Servis";
-      return `
-        <div class="flex items-center justify-between gap-3 py-3">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="rounded-md px-2 py-0.5 text-[11px] font-semibold ${iconBg}">${badge}</span>
-              <p class="truncate text-sm font-semibold text-slate-900">${escapeHtml(item.title)}</p>
-            </div>
-            <p class="mt-0.5 text-xs text-slate-500">
-              ${escapeHtml(formatDateID(item.logged_at))} • ${formatNumber(
-        item.odometer_km,
-        0
-      )} km • ${escapeHtml(item.subtitle)}
-            </p>
+    .map(
+      (item) => `
+      <div class="flex items-center justify-between gap-3 py-3">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="rounded-md px-2 py-0.5 text-[11px] font-semibold ${item.badgeClass}">${item.kind}</span>
+            <p class="truncate text-sm font-semibold text-slate-800">${escapeHtml(item.title)}</p>
           </div>
-          <p class="shrink-0 text-sm font-semibold text-slate-900">${escapeHtml(
-            formatIDR(item.cost)
-          )}</p>
+          <p class="mt-0.5 text-xs text-slate-500">${escapeHtml(formatDateID(item.logged_at))} • ${formatNumber(item.odometer_km, 0)} km • ${escapeHtml(item.subtitle)}</p>
         </div>
-      `;
-    })
+        <p class="shrink-0 text-sm font-semibold text-slate-900">${escapeHtml(formatIDR(item.cost))}</p>
+      </div>
+    `
+    )
     .join("");
 }
 
 async function loadActiveVehicleData() {
-  const vehicle = getActiveVehicle();
-  if (!vehicle) {
+  if (!state.activeVehicleId) {
     state.fuelLogs = [];
     state.maintenanceLogs = [];
     renderDashboard();
     return;
   }
-  state.activeVehicleId = vehicle.id;
-  localStorage.setItem(STORAGE_VEHICLE_KEY, vehicle.id);
 
+  localStorage.setItem(STORAGE_VEHICLE_KEY, state.activeVehicleId);
   const [fuelLogs, maintenanceLogs] = await Promise.all([
-    listFuelLogs(vehicle.id),
-    listMaintenanceLogs(vehicle.id)
+    listFuelLogs(state.activeVehicleId),
+    listMaintenanceLogs(state.activeVehicleId)
   ]);
+
   state.fuelLogs = fuelLogs;
   state.maintenanceLogs = maintenanceLogs;
   renderDashboard();
 }
 
-function bindFuelTransactionCalculator() {
-  const brandSelect = /** @type {HTMLSelectElement | null} */ (qs("#fuel-brand"));
-  const totalInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-total"));
-  const priceInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-price"));
-
-  brandSelect?.addEventListener("change", syncFuelPriceFromSelection);
-  totalInput?.addEventListener("input", updateCalculatedLitersPreview);
-  priceInput?.addEventListener("input", updateCalculatedLitersPreview);
-
-  document.querySelectorAll("[data-fuel-preset]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const presetAmount = btn.getAttribute("data-fuel-preset");
-      if (totalInput && presetAmount) {
-        totalInput.value = presetAmount;
-        updateCalculatedLitersPreview();
-      }
-    });
-  });
-}
-
-function bindMaintenanceIntervalHelpers() {
-  const categorySelect = qs("#maint-category");
-  const odoInput = qs("#maint-odometer");
-  const applyBtn = qs("#btn-apply-maint-interval");
-  const nextDueInput = /** @type {HTMLInputElement | null} */ (qs("#maint-next-due"));
-
-  categorySelect?.addEventListener("change", updateMaintenanceIntervalHint);
-  odoInput?.addEventListener("input", updateMaintenanceIntervalHint);
-
-  applyBtn?.addEventListener("click", () => {
-    const suggested = applyBtn.getAttribute("data-suggested-due");
-    if (nextDueInput && suggested) {
-      nextDueInput.value = suggested;
-    }
-  });
-}
-
 function bindDashboardEvents() {
   bindModalDismissHandlers();
-  bindFuelTransactionCalculator();
-  bindMaintenanceIntervalHelpers();
 
   qs("#btn-signout")?.addEventListener("click", async () => {
-    try {
-      await signOut("./login.html");
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Gagal logout", "error");
-    }
+    await signOut("./login.html");
   });
 
   qs("#vehicle-selector")?.addEventListener("change", async (event) => {
     const select = /** @type {HTMLSelectElement} */ (event.target);
     state.activeVehicleId = select.value;
+    renderVehicleSelector();
     await loadActiveVehicleData();
   });
 
-  const openVehicleHandlers = ["#btn-open-vehicle-modal", "#btn-empty-add-vehicle"];
-  for (const selector of openVehicleHandlers) {
-    qs(selector)?.addEventListener("click", () => {
-      const vehicleFuelSelect = /** @type {HTMLSelectElement | null} */ (
-        qs("#vehicle-fuel-type")
-      );
-      renderFuelSelectOptions(vehicleFuelSelect, "Pertamax");
-      openModal("modal-add-vehicle");
-    });
-  }
+  const openVehicleModal = () => {
+    setModalError("modal-add-vehicle", "");
+    renderFuelSelectOptions(
+      /** @type {HTMLSelectElement | null} */ (qs("#vehicle-fuel-type")),
+      "Pertamax"
+    );
+    openModal("modal-add-vehicle");
+  };
+  qs("#btn-open-vehicle-modal")?.addEventListener("click", openVehicleModal);
+  qs("#btn-empty-add-vehicle")?.addEventListener("click", openVehicleModal);
 
-  qs("#btn-open-fuel-modal")?.addEventListener("click", () => {
+  qs("#btn-open-edit-vehicle-modal")?.addEventListener("click", () => {
     const vehicle = getActiveVehicle();
     if (!vehicle) {
       showToast("Tambahkan kendaraan terlebih dahulu.", "info");
-      openModal("modal-add-vehicle");
+      openVehicleModal();
       return;
     }
+
+    setModalError("modal-edit-vehicle", "");
+    /** @type {HTMLInputElement | null} */ (qs("#edit-vehicle-name")).value = vehicle.name || "";
+    /** @type {HTMLInputElement | null} */ (qs("#edit-vehicle-plate")).value =
+      vehicle.plate_number || "";
+    /** @type {HTMLInputElement | null} */ (qs("#edit-vehicle-tank")).value = String(
+      vehicle.tank_capacity_liters ?? 3.7
+    );
+    /** @type {HTMLInputElement | null} */ (qs("#edit-vehicle-brand-model")).value =
+      vehicle.brand_model || "";
+    /** @type {HTMLInputElement | null} */ (qs("#edit-vehicle-tax-due")).value =
+      vehicle.tax_due_date ? String(vehicle.tax_due_date).slice(0, 10) : "";
+    /** @type {HTMLInputElement | null} */ (qs("#edit-vehicle-plate-due")).value =
+      vehicle.plate_due_date ? String(vehicle.plate_due_date).slice(0, 10) : "";
+
+    renderFuelSelectOptions(
+      /** @type {HTMLSelectElement | null} */ (qs("#edit-vehicle-fuel-type")),
+      vehicle.fuel_type || "Pertamax"
+    );
+    openModal("modal-edit-vehicle");
+  });
+
+  qs("#btn-open-fuel-modal")?.addEventListener("click", () => {
+    const active = getActiveVehicle();
+    if (!active) {
+      showToast("Tambahkan kendaraan terlebih dahulu.", "info");
+      openVehicleModal();
+      return;
+    }
+    setModalError("modal-add-fuel", "");
+    const telemetry = summarizeVehicleTelemetry(
+      active,
+      state.fuelLogs,
+      state.maintenanceLogs
+    );
 
     const dateInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-date"));
     const odoInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-odometer"));
     const brandSelect = /** @type {HTMLSelectElement | null} */ (qs("#fuel-brand"));
+    const priceInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-price"));
     const totalInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-total"));
     const stationInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-station"));
 
-    if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
-    if (odoInput) odoInput.placeholder = `Terakhir: ${vehicle.current_odometer_km} km`;
-    if (totalInput) totalInput.value = "";
-    if (stationInput && !stationInput.value) {
-      stationInput.value = getLastUsedStationName();
-    }
+    const lastFuel = state.fuelLogs[0];
+    const defaultFuel = resolveDefaultFuelOption(lastFuel?.fuel_brand || active.fuel_type);
 
-    renderFuelSelectOptions(brandSelect, vehicle.fuel_type || "Pertamax");
-    syncFuelPriceFromSelection();
+    if (dateInput) dateInput.value = getTodayIsoDate();
+    if (odoInput) odoInput.value = String(telemetry.currentOdometer || "");
+    renderFuelSelectOptions(brandSelect, defaultFuel.product_name);
+    if (priceInput) {
+      priceInput.value = String(
+        lastFuel && lastFuel.fuel_brand === defaultFuel.product_name && Number(lastFuel.price_per_liter) > 0
+          ? lastFuel.price_per_liter
+          : defaultFuel.price_per_liter
+      );
+    }
+    if (totalInput) totalInput.value = "";
+    if (stationInput && !stationInput.value && lastFuel?.station_name) {
+      stationInput.value = lastFuel.station_name;
+    }
+    updateFuelLitersPreview();
     openModal("modal-add-fuel");
   });
 
+  qs("#fuel-brand")?.addEventListener("change", (event) => {
+    const select = /** @type {HTMLSelectElement} */ (event.target);
+    const chosen = select.options[select.selectedIndex];
+    const refPrice = Number(chosen?.dataset?.price || 0);
+    const priceInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-price"));
+    if (priceInput && refPrice > 0) {
+      priceInput.value = String(refPrice);
+      updateFuelLitersPreview();
+    }
+  });
+
+  qs("#fuel-total")?.addEventListener("input", updateFuelLitersPreview);
+  qs("#fuel-price")?.addEventListener("input", updateFuelLitersPreview);
+
+  document.querySelectorAll("[data-fuel-preset]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const amount = btn.getAttribute("data-fuel-preset") || "";
+      const totalInput = /** @type {HTMLInputElement | null} */ (qs("#fuel-total"));
+      if (totalInput && amount) {
+        totalInput.value = amount;
+        updateFuelLitersPreview();
+      }
+    });
+  });
+
   qs("#btn-open-maint-modal")?.addEventListener("click", () => {
-    const vehicle = getActiveVehicle();
-    if (!vehicle) {
+    const active = getActiveVehicle();
+    if (!active) {
       showToast("Tambahkan kendaraan terlebih dahulu.", "info");
-      openModal("modal-add-vehicle");
+      openVehicleModal();
       return;
     }
+    setModalError("modal-add-maint", "");
+    const telemetry = summarizeVehicleTelemetry(
+      active,
+      state.fuelLogs,
+      state.maintenanceLogs
+    );
+
     const dateInput = /** @type {HTMLInputElement | null} */ (qs("#maint-date"));
     const odoInput = /** @type {HTMLInputElement | null} */ (qs("#maint-odometer"));
     const workshopInput = /** @type {HTMLInputElement | null} */ (qs("#maint-workshop"));
+    const nextDueInput = /** @type {HTMLInputElement | null} */ (qs("#maint-next-due"));
+    const lastMaint = state.maintenanceLogs[0];
 
-    if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
-    if (odoInput) odoInput.placeholder = `Terakhir: ${vehicle.current_odometer_km} km`;
-    if (workshopInput && !workshopInput.value) {
-      workshopInput.value = getLastUsedWorkshopName();
+    if (dateInput) dateInput.value = getTodayIsoDate();
+    if (odoInput) odoInput.value = String(telemetry.currentOdometer || "");
+    if (nextDueInput) nextDueInput.value = "";
+    if (workshopInput && !workshopInput.value && lastMaint?.workshop_name) {
+      workshopInput.value = lastMaint.workshop_name;
     }
-
-    updateMaintenanceIntervalHint();
+    updateMaintIntervalHint();
     openModal("modal-add-maint");
+  });
+
+  qs("#maint-category")?.addEventListener("change", updateMaintIntervalHint);
+  qs("#maint-odometer")?.addEventListener("input", updateMaintIntervalHint);
+
+  qs("#btn-apply-maint-interval")?.addEventListener("click", () => {
+    const hintBox = /** @type {HTMLElement | null} */ (qs("#maint-interval-hint"));
+    const nextDueInput = /** @type {HTMLInputElement | null} */ (qs("#maint-next-due"));
+    const suggested = hintBox?.dataset?.suggestedKm;
+    if (nextDueInput && suggested) {
+      nextDueInput.value = suggested;
+    }
   });
 
   qs("#form-add-vehicle")?.addEventListener("submit", async (event) => {
@@ -578,26 +672,63 @@ function bindDashboardEvents() {
       const created = await createVehicle({
         name: String(formData.get("name") || ""),
         plate_number: String(formData.get("plate_number") || ""),
-        brand_model: String(formData.get("brand_model") || ""),
         fuel_type: String(formData.get("fuel_type") || "Pertamax"),
-        tank_capacity_liters: Number(
-          String(formData.get("tank_capacity_liters") || "3.7").replace(",", ".")
-        ),
-        initial_odometer_km: Number(
-          String(formData.get("initial_odometer_km") || "0").replace(",", ".")
-        )
+        tank_capacity_liters: Number(formData.get("tank_capacity_liters") || 3.7),
+        initial_odometer_km: Number(formData.get("initial_odometer_km") || 0),
+        tax_due_date: String(formData.get("tax_due_date") || "") || null,
+        plate_due_date: String(formData.get("plate_due_date") || "") || null
       });
 
       state.vehicles.push(created);
       state.activeVehicleId = created.id;
-      renderVehicleSelector();
-      await loadActiveVehicleData();
       form.reset();
       closeModal("modal-add-vehicle");
+      renderVehicleSelector();
+      await loadActiveVehicleData();
       showToast(`Kendaraan "${created.name}" berhasil ditambahkan.`, "success");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Gagal menyimpan kendaraan.";
+      const msg = err instanceof Error ? err.message : "Gagal menambahkan kendaraan.";
       setModalError("modal-add-vehicle", msg);
+      showToast(msg, "error");
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+
+  qs("#form-edit-vehicle")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setModalError("modal-edit-vehicle", "");
+    const vehicle = getActiveVehicle();
+    if (!vehicle) return;
+
+    const form = /** @type {HTMLFormElement} */ (event.target);
+    const submitBtn = /** @type {HTMLButtonElement | null} */ (qs("#btn-submit-edit-vehicle"));
+    setButtonLoading(submitBtn, true);
+
+    try {
+      const formData = new FormData(form);
+      const updated = await updateVehicle(vehicle.id, {
+        name: String(formData.get("name") || "").trim(),
+        plate_number: String(formData.get("plate_number") || "").trim(),
+        brand_model: String(formData.get("brand_model") || "").trim(),
+        fuel_type: String(formData.get("fuel_type") || "Pertamax"),
+        tank_capacity_liters: Number(
+          String(formData.get("tank_capacity_liters") || "3.7").replace(",", ".")
+        ),
+        tax_due_date: String(formData.get("tax_due_date") || "") || null,
+        plate_due_date: String(formData.get("plate_due_date") || "") || null
+      });
+
+      state.vehicles = state.vehicles.map((item) =>
+        item.id === vehicle.id ? { ...item, ...updated } : item
+      );
+      renderVehicleSelector();
+      renderDashboard();
+      closeModal("modal-edit-vehicle");
+      showToast(`Profil "${updated.name || vehicle.name}" berhasil diperbarui.`, "success");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Gagal memperbarui kendaraan.";
+      setModalError("modal-edit-vehicle", msg);
       showToast(msg, "error");
     } finally {
       setButtonLoading(submitBtn, false);
@@ -607,9 +738,6 @@ function bindDashboardEvents() {
   qs("#form-add-fuel")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     setModalError("modal-add-fuel", "");
-    const vehicle = getActiveVehicle();
-    if (!vehicle) return;
-
     const form = /** @type {HTMLFormElement} */ (event.target);
     const submitBtn = /** @type {HTMLButtonElement | null} */ (qs("#btn-submit-fuel"));
     setButtonLoading(submitBtn, true);
@@ -620,30 +748,25 @@ function bindDashboardEvents() {
       const pricePerLiter = Number(
         String(formData.get("price_per_liter") || "").replace(",", ".")
       );
-      const calculatedLiters = calculateLitersFromCost(totalCost, pricePerLiter);
 
       await createFuelLog({
-        vehicle_id: vehicle.id,
+        vehicle_id: state.activeVehicleId,
         logged_at: String(formData.get("logged_at") || ""),
         odometer_km: Number(String(formData.get("odometer_km") || "").replace(",", ".")),
-        liters: calculatedLiters,
-        price_per_liter: pricePerLiter,
         total_cost: totalCost,
+        price_per_liter: pricePerLiter,
         fuel_brand: String(formData.get("fuel_brand") || "Pertamax"),
         station_name: String(formData.get("station_name") || ""),
         is_full_tank: formData.get("is_full_tank") === "on",
         notes: String(formData.get("notes") || "")
       });
 
-      state.vehicles = await listVehicles();
-      renderVehicleSelector();
-      await loadActiveVehicleData();
       form.reset();
-      updateCalculatedLitersPreview();
       closeModal("modal-add-fuel");
-      showToast(`Catatan BBM tersimpan (${formatLiters(calculatedLiters)}).`, "success");
+      await loadActiveVehicleData();
+      showToast("Catatan pengisian BBM berhasil disimpan.", "success");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Gagal menyimpan BBM.";
+      const msg = err instanceof Error ? err.message : "Gagal menyimpan catatan BBM.";
       setModalError("modal-add-fuel", msg);
       showToast(msg, "error");
     } finally {
@@ -654,17 +777,16 @@ function bindDashboardEvents() {
   qs("#form-add-maint")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     setModalError("modal-add-maint", "");
-    const vehicle = getActiveVehicle();
-    if (!vehicle) return;
-
     const form = /** @type {HTMLFormElement} */ (event.target);
     const submitBtn = /** @type {HTMLButtonElement | null} */ (qs("#btn-submit-maint"));
     setButtonLoading(submitBtn, true);
 
     try {
       const formData = new FormData(form);
+      const nextDueRaw = String(formData.get("next_due_km") || "").trim();
+
       await createMaintenanceLog({
-        vehicle_id: vehicle.id,
+        vehicle_id: state.activeVehicleId,
         logged_at: String(formData.get("logged_at") || ""),
         odometer_km: Number(String(formData.get("odometer_km") || "").replace(",", ".")),
         category: /** @type {import("../types.js").MaintenanceLog["category"]} */ (
@@ -673,20 +795,16 @@ function bindDashboardEvents() {
         title: String(formData.get("title") || ""),
         workshop_name: String(formData.get("workshop_name") || ""),
         total_cost: Number(String(formData.get("total_cost") || "0").replace(",", ".")),
-        next_due_km: formData.get("next_due_km")
-          ? Number(String(formData.get("next_due_km")).replace(",", "."))
-          : null,
+        next_due_km: nextDueRaw ? Number(nextDueRaw.replace(",", ".")) : null,
         notes: String(formData.get("notes") || "")
       });
 
-      state.vehicles = await listVehicles();
-      renderVehicleSelector();
-      await loadActiveVehicleData();
       form.reset();
       closeModal("modal-add-maint");
+      await loadActiveVehicleData();
       showToast("Catatan servis berhasil disimpan.", "success");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Gagal menyimpan servis.";
+      const msg = err instanceof Error ? err.message : "Gagal menyimpan catatan servis.";
       setModalError("modal-add-maint", msg);
       showToast(msg, "error");
     } finally {
@@ -706,11 +824,6 @@ async function initDashboard() {
     const [vehicles, fuelPrices] = await Promise.all([listVehicles(), listFuelPrices()]);
     state.vehicles = vehicles;
     state.fuelPrices = fuelPrices;
-
-    renderFuelSelectOptions(
-      /** @type {HTMLSelectElement | null} */ (qs("#vehicle-fuel-type")),
-      "Pertamax"
-    );
 
     const savedId = localStorage.getItem(STORAGE_VEHICLE_KEY) || "";
     if (savedId && state.vehicles.some((v) => v.id === savedId)) {
