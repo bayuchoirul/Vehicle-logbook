@@ -97,3 +97,16 @@ export function onAuthStateChange(callback) {
     callback(event, session);
   });
 }
+/**
+ * Masuk menggunakan email dan kata sandi.
+ * @param {string} email
+ * @param {string} password
+ */
+export async function signInWithPassword(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  });
+  if (error) throw error;
+  return data;
+}
