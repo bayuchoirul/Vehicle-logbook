@@ -394,3 +394,45 @@ export function summarizeTaxReminders(vehicle, referenceIsoDate) {
 
   return items.sort((a, b) => a.daysRemaining - b.daysRemaining);
 }
+
+/**
+ * Summarizes fuel spend, volume, average unit price, and fill count grouped by fuel_brand.
+ *
+ * @param {import("../types.js").FuelLog[]} fuelLogs
+ * @returns {Array<{brand: string, fillCount: number, totalLiters: number, totalCost: number, avgPricePerLiter: number}>}
+ */
+export function summarizeFuelBrandBreakdown(fuelLogs) {
+  if (!Array.isArray(fuelLogs) || fuelLogs.length === 0) return [];
+
+  /** @type {Map<string, {brand: string, fillCount: number, totalLiters: number, totalCost: number}>} */
+  const map = new Map();
+
+  for (const log of fuelLogs) {
+    const brand = String(log.fuel_brand || "BBM").trim() || "BBM";
+    const liters = Number(log.liters) || 0;
+    const cost = Number(log.total_cost) || 0;
+    if (liters <= 0 && cost <= 0) continue;
+
+    const current = map.get(brand) || {
+      brand,
+      fillCount: 0,
+      totalLiters: 0,
+      totalCost: 0
+    };
+    current.fillCount += 1;
+    current.totalLiters += liters;
+    current.totalCost += cost;
+    map.set(brand, current);
+  }
+
+  return [...map.values()]
+    .map((item) => ({
+      brand: item.brand,
+      fillCount: item.fillCount,
+      totalLiters: Number(item.totalLiters.toFixed(2)),
+      totalCost: Math.round(item.totalCost),
+      avgPricePerLiter:
+        item.totalLiters > 0 ? Math.round(item.totalCost / item.totalLiters) : 0
+    }))
+    .sort((a, b) => b.totalCost - a.totalCost);
+}
