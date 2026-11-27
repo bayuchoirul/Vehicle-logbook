@@ -147,7 +147,7 @@ function updateFuelLitersPreview() {
 function updateMaintIntervalHint() {
   const categorySelect = /** @type {HTMLSelectElement | null} */ (qs("#maint-category"));
   const odoInput = /** @type {HTMLInputElement | null} */ (qs("#maint-odometer"));
-  const hintBox = qs("#maint-interval-hint");
+  const hintBox = /** @type {HTMLElement | null} */ (qs("#maint-interval-hint"));
   const labelEl = qs("#maint-interval-label");
   if (!categorySelect || !hintBox || !labelEl) return;
 
@@ -652,7 +652,7 @@ function bindDashboardEvents() {
   qs("#maint-odometer")?.addEventListener("input", updateMaintIntervalHint);
 
   qs("#btn-apply-maint-interval")?.addEventListener("click", () => {
-    const hintBox = qs("#maint-interval-hint");
+    const hintBox = /** @type {HTMLElement | null} */ (qs("#maint-interval-hint"));
     const nextDueInput = /** @type {HTMLInputElement | null} */ (qs("#maint-next-due"));
     const suggested = hintBox?.dataset?.suggestedKm;
     if (nextDueInput && suggested) {
